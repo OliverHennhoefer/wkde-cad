@@ -1,8 +1,8 @@
 [project]
 name = "learning-the-null"
 version = "0.1.0"
-description = "Add your description here"
+description = "Code for 'Learning the Null: <title>'"
 requires-python = ">=3.12"
 dependencies = [
-    "nonconform==0.95.0",
+    "nonconform[all]==0.95.1",
 ]
