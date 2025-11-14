@@ -5,10 +5,15 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold, train_test_split
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
+from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
 from nonconform.utils.data import load
 from code.utils.registry import get_dataset_enum, get_model_instance
 from code.utils.logger import get_logger
+
+####################################################################################################################
+# Setup
+####################################################################################################################
 
 logger = get_logger()
 
@@ -19,6 +24,10 @@ with open(config_path, "rb") as f:
 
 datasets = cfg["experiments"]["datasets"]
 datasets = datasets if isinstance(datasets, list) else [datasets]
+
+####################################################################################################################
+# Dataset Setup
+####################################################################################################################
 
 for ds_name in tqdm(datasets, desc="Datasets"):
     dataset_enum = get_dataset_enum(ds_name)
@@ -38,7 +47,10 @@ for ds_name in tqdm(datasets, desc="Datasets"):
         random_state=cfg["global"]["meta_seed"],
     )
 
-    # Model selection
+    ####################################################################################################################
+    # Model Selection
+    ####################################################################################################################
+
     empirical_anomaly_rate = len(anomaly) / len(data)
     models = cfg["experiments"]["models"]
     models = models if isinstance(models, list) else [models]
@@ -72,6 +84,10 @@ for ds_name in tqdm(datasets, desc="Datasets"):
             X_test = pd.concat([X_normal_test, X_anomaly_test]).values
             y_test = np.concatenate([np.zeros(len(X_normal_test)), np.ones(len(X_anomaly_test))])
 
+            scaler = StandardScaler()
+            X_train = scaler.fit_transform(X_train)
+            X_test = scaler.transform(X_test)
+
             model = get_model_instance(model_name)
             model.fit(X_train)
             y_scores = model.decision_function(X_test)
@@ -104,7 +120,16 @@ for ds_name in tqdm(datasets, desc="Datasets"):
         all_fold_data.append({"dataset": ds_name, "model": model_name, "fold": "mean",
                              "prauc": mean_prauc, "rocauc": mean_rocauc, "brier": mean_brier})
 
-    best_model = max(model_results, key=lambda x: x["mean_prauc"])
+    best_model = max(model_results, key=lambda x: (x["mean_prauc"], x["mean_rocauc"], -x["mean_brier"]))
+
+    logger.info(f"{ds_name} - {best_model["model"]}")
 
     df_all = pd.DataFrame(all_fold_data)
     df_all.to_csv(output_dir / f"{ds_name}.csv", index=False)
+
+    ####################################################################################################################
+    # Experimentation
+    ####################################################################################################################
+
+    # TODO: Add StandardScaler (fit_transform on train, transform on test)
+
