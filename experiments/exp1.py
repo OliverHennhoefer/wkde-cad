@@ -2,16 +2,17 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import csv
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, Type
 
 import numpy as np
 from pyod.models.base import BaseDetector
-from pyod.models.copod import COPOD
+from pyod.models.iforest import IForest
 from sklearn.preprocessing import StandardScaler
 from scipy.stats import false_discovery_control
 
@@ -37,8 +38,8 @@ from source.split import StratifiedSplitter
 class ExperimentConfig:
     """Configuration for conformal FDR experiment."""
 
-    dataset: Dataset = Dataset.LYMPHOGRAPHY
-    detector_cls: Type[BaseDetector] = COPOD
+    dataset: Dataset = Dataset.WBC
+    detector_cls: Type[BaseDetector] = IForest
     detector_params: Dict[str, Any] = field(default_factory=dict)
     num_seeds: int = 20
     alpha: float = 0.1
@@ -122,8 +123,8 @@ def _run_single_seed(config: ExperimentConfig, seed: int) -> Dict[str, Any]:
     detector.fit(X_train)
     n_calibration = len(detector._calibration_set)
     p_values = detector.predict(X_test)
-    decisions = false_discovery_control(p_values, method='bh') <= config.alpha
-    variants['empirical'] = _calculate_metrics(decisions, y_test)
+    decisions = false_discovery_control(p_values, method="bh") <= config.alpha
+    variants["empirical"] = _calculate_metrics(decisions, y_test)
 
     # 2. Empirical + Weighted (4 variants from 1 run)
     detector = ConformalDetector(
@@ -141,22 +142,22 @@ def _run_single_seed(config: ExperimentConfig, seed: int) -> Dict[str, Any]:
     result = detector.last_result
 
     decisions = weighted_bh(result, alpha=config.alpha)
-    variants['empirical_weighted_bh'] = _calculate_metrics(decisions, y_test)
+    variants["empirical_weighted_bh"] = _calculate_metrics(decisions, y_test)
 
     decisions = weighted_false_discovery_control(
         result, alpha=config.alpha, pruning=Pruning.DETERMINISTIC, seed=seed
     )
-    variants['empirical_wcs_dtm'] = _calculate_metrics(decisions, y_test)
+    variants["empirical_wcs_dtm"] = _calculate_metrics(decisions, y_test)
 
     decisions = weighted_false_discovery_control(
         result, alpha=config.alpha, pruning=Pruning.HOMOGENEOUS, seed=seed
     )
-    variants['empirical_wcs_homo'] = _calculate_metrics(decisions, y_test)
+    variants["empirical_wcs_homo"] = _calculate_metrics(decisions, y_test)
 
     decisions = weighted_false_discovery_control(
         result, alpha=config.alpha, pruning=Pruning.HETEROGENEOUS, seed=seed
     )
-    variants['empirical_wcs_hete'] = _calculate_metrics(decisions, y_test)
+    variants["empirical_wcs_hete"] = _calculate_metrics(decisions, y_test)
 
     # 3. KDE + Unweighted (1 variant)
     detector = ConformalDetector(
@@ -174,8 +175,8 @@ def _run_single_seed(config: ExperimentConfig, seed: int) -> Dict[str, Any]:
     )
     detector.fit(X_train)
     p_values = detector.predict(X_test)
-    decisions = false_discovery_control(p_values, method='bh') <= config.alpha
-    variants['kde'] = _calculate_metrics(decisions, y_test)
+    decisions = false_discovery_control(p_values, method="bh") <= config.alpha
+    variants["kde"] = _calculate_metrics(decisions, y_test)
 
     # 4. KDE + Weighted (4 variants from 1 run)
     detector = ConformalDetector(
@@ -196,28 +197,32 @@ def _run_single_seed(config: ExperimentConfig, seed: int) -> Dict[str, Any]:
     result = detector.last_result
 
     decisions = weighted_bh(result, alpha=config.alpha)
-    variants['kde_weighted_bh'] = _calculate_metrics(decisions, y_test)
+    variants["kde_weighted_bh"] = _calculate_metrics(decisions, y_test)
 
     decisions = weighted_false_discovery_control(
         result, alpha=config.alpha, pruning=Pruning.DETERMINISTIC, seed=seed
     )
-    variants['kde_wcs_dtm'] = _calculate_metrics(decisions, y_test)
+    variants["kde_wcs_dtm"] = _calculate_metrics(decisions, y_test)
 
     decisions = weighted_false_discovery_control(
         result, alpha=config.alpha, pruning=Pruning.HOMOGENEOUS, seed=seed
     )
-    variants['kde_wcs_homo'] = _calculate_metrics(decisions, y_test)
+    variants["kde_wcs_homo"] = _calculate_metrics(decisions, y_test)
 
     decisions = weighted_false_discovery_control(
         result, alpha=config.alpha, pruning=Pruning.HETEROGENEOUS, seed=seed
     )
-    variants['kde_wcs_hete'] = _calculate_metrics(decisions, y_test)
+    variants["kde_wcs_hete"] = _calculate_metrics(decisions, y_test)
 
     seed_runtime = time.perf_counter() - seed_start
 
-    print(f"[Seed {seed:>3}] {config.dataset.name} | {config.detector_cls.__name__} (alpha={config.alpha:.3f})")
+    print(
+        f"[Seed {seed:>3}] {config.dataset.name} | {config.detector_cls.__name__} (alpha={config.alpha:.3f})"
+    )
     for variant_name, metrics in variants.items():
-        print(f"    {variant_name:>20}: FDR={metrics['fdr']:.4f} | Power={metrics['power']:.4f}")
+        print(
+            f"    {variant_name:>20}: FDR={metrics['fdr']:.4f} | Power={metrics['power']:.4f}"
+        )
 
     return {
         "seed": seed,
@@ -266,8 +271,14 @@ def run_experiment(config: ExperimentConfig) -> Dict[str, Any]:
             }
 
     # Save to CSV
-    output_path = Path(config.output_path) if config.output_path else (
-        Path(__file__).parent.parent / "results" / f"exp1_{config.dataset.name.lower()}_{config.detector_cls.__name__.lower()}.csv"
+    output_path = (
+        Path(config.output_path)
+        if config.output_path
+        else (
+            Path(__file__).parent.parent
+            / "results"
+            / f"exp1_{config.dataset.name.lower()}_{config.detector_cls.__name__.lower()}.csv"
+        )
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -275,11 +286,22 @@ def run_experiment(config: ExperimentConfig) -> Dict[str, Any]:
         writer = csv.DictWriter(
             f,
             fieldnames=[
-                "dataset", "model", "seed", "alpha", "n_calibration",
-                "n_test_samples", "n_test_anomalies",
-                "variant", "fdr", "fdr_std", "power", "power_std",
-                "n_discoveries", "discoveries_std",
-                "discovery_rate", "discovery_rate_std",
+                "dataset",
+                "model",
+                "seed",
+                "alpha",
+                "n_calibration",
+                "n_test_samples",
+                "n_test_anomalies",
+                "variant",
+                "fdr",
+                "fdr_std",
+                "power",
+                "power_std",
+                "n_discoveries",
+                "discoveries_std",
+                "discovery_rate",
+                "discovery_rate_std",
             ],
         )
         writer.writeheader()
@@ -290,59 +312,69 @@ def run_experiment(config: ExperimentConfig) -> Dict[str, Any]:
         # Write per-seed rows
         for seed_result in per_seed_results:
             for variant_name, metrics in seed_result["variants"].items():
-                writer.writerow({
-                    "dataset": dataset_name,
-                    "model": model_name,
-                    "seed": seed_result["seed"],
-                    "alpha": f"{seed_result['alpha']:.6f}",
-                    "n_calibration": seed_result["n_calibration"],
-                    "n_test_samples": seed_result["n_test_samples"],
-                    "n_test_anomalies": seed_result["n_test_anomalies"],
-                    "variant": variant_name,
-                    "fdr": f"{metrics['fdr']:.6f}",
-                    "fdr_std": "",
-                    "power": f"{metrics['power']:.6f}",
-                    "power_std": "",
-                    "n_discoveries": metrics["n_discoveries"],
-                    "discoveries_std": "",
-                    "discovery_rate": f"{metrics['discovery_rate']:.6f}",
-                    "discovery_rate_std": "",
-                })
+                writer.writerow(
+                    {
+                        "dataset": dataset_name,
+                        "model": model_name,
+                        "seed": seed_result["seed"],
+                        "alpha": f"{seed_result['alpha']:.6f}",
+                        "n_calibration": seed_result["n_calibration"],
+                        "n_test_samples": seed_result["n_test_samples"],
+                        "n_test_anomalies": seed_result["n_test_anomalies"],
+                        "variant": variant_name,
+                        "fdr": f"{metrics['fdr']:.6f}",
+                        "fdr_std": "",
+                        "power": f"{metrics['power']:.6f}",
+                        "power_std": "",
+                        "n_discoveries": metrics["n_discoveries"],
+                        "discoveries_std": "",
+                        "discovery_rate": f"{metrics['discovery_rate']:.6f}",
+                        "discovery_rate_std": "",
+                    }
+                )
 
         # Write aggregate rows
         for variant_name, agg_metrics in aggregate_variants.items():
-            writer.writerow({
-                "dataset": dataset_name,
-                "model": model_name,
-                "seed": "MEAN",
-                "alpha": f"{config.alpha:.6f}",
-                "n_calibration": "",
-                "n_test_samples": "",
-                "n_test_anomalies": "",
-                "variant": variant_name,
-                "fdr": f"{agg_metrics['fdr_mean']:.6f}",
-                "fdr_std": f"{agg_metrics['fdr_std']:.6f}",
-                "power": f"{agg_metrics['power_mean']:.6f}",
-                "power_std": f"{agg_metrics['power_std']:.6f}",
-                "n_discoveries": f"{agg_metrics['discoveries_mean']:.6f}",
-                "discoveries_std": f"{agg_metrics['discoveries_std']:.6f}",
-                "discovery_rate": f"{agg_metrics['discovery_rate_mean']:.6f}",
-                "discovery_rate_std": f"{agg_metrics['discovery_rate_std']:.6f}",
-            })
+            writer.writerow(
+                {
+                    "dataset": dataset_name,
+                    "model": model_name,
+                    "seed": "MEAN",
+                    "alpha": f"{config.alpha:.6f}",
+                    "n_calibration": "",
+                    "n_test_samples": "",
+                    "n_test_anomalies": "",
+                    "variant": variant_name,
+                    "fdr": f"{agg_metrics['fdr_mean']:.6f}",
+                    "fdr_std": f"{agg_metrics['fdr_std']:.6f}",
+                    "power": f"{agg_metrics['power_mean']:.6f}",
+                    "power_std": f"{agg_metrics['power_std']:.6f}",
+                    "n_discoveries": f"{agg_metrics['discoveries_mean']:.6f}",
+                    "discoveries_std": f"{agg_metrics['discoveries_std']:.6f}",
+                    "discovery_rate": f"{agg_metrics['discovery_rate_mean']:.6f}",
+                    "discovery_rate_std": f"{agg_metrics['discovery_rate_std']:.6f}",
+                }
+            )
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print("EXPERIMENT SUMMARY")
-    print(f"{'='*80}")
-    print(f"Dataset: {dataset_name} | Model: {model_name} | Seeds: {len(per_seed_results)}")
-    print(f"Total runtime: {total_runtime:.2f}s | Avg per seed: {total_runtime/len(per_seed_results):.2f}s")
+    print(f"{'=' * 80}")
+    print(
+        f"Dataset: {dataset_name} | Model: {model_name} | Seeds: {len(per_seed_results)}"
+    )
+    print(
+        f"Total runtime: {total_runtime:.2f}s | Avg per seed: {total_runtime / len(per_seed_results):.2f}s"
+    )
     print(f"\nResults saved: {output_path}")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     for variant_name, agg in aggregate_variants.items():
-        print(f"{variant_name:>20}: FDR={agg['fdr_mean']:.4f}�{agg['fdr_std']:.4f} | "
-              f"Power={agg['power_mean']:.4f}�{agg['power_std']:.4f} | "
-              f"Discoveries={agg['discoveries_mean']:.2f}�{agg['discoveries_std']:.2f}")
-    print(f"{'='*80}")
+        print(
+            f"{variant_name:>20}: FDR={agg['fdr_mean']:.4f}�{agg['fdr_std']:.4f} | "
+            f"Power={agg['power_mean']:.4f}�{agg['power_std']:.4f} | "
+            f"Discoveries={agg['discoveries_mean']:.2f}�{agg['discoveries_std']:.2f}"
+        )
+    print(f"{'=' * 80}")
 
     return {
         "config": config,

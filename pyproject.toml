@@ -4,5 +4,5 @@ version = "0.1.0"
 description = "Code for 'Learning the Null: <title>'"
 requires-python = ">=3.12"
 dependencies = [
-    "nonconform[all]==0.95.1",
+    "nonconform[data,fdr]==0.95.3",
 ]

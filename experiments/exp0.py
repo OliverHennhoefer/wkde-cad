@@ -2,26 +2,26 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import csv
 import logging
 
-from pyod.models.cblof import CBLOF
 from pyod.models.mcd import MCD
 from pyod.models.iforest import IForest
 from pyod.models.ecod import ECOD
 from pyod.models.hbos import HBOS
 from pyod.models.inne import INNE
 from pyod.models.copod import COPOD
-from pyod.models.gmm import GMM
 from pyod.models.loda import LODA
-from pyod.models.cd import CD
 
 from nonconform.utils.data import Dataset
 from source.model_selection import run_model_selection, get_best_models
 
-logging.basicConfig(level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 def main():
@@ -39,7 +39,9 @@ def main():
     model_classes = [IForest, ECOD, HBOS, COPOD, LODA, INNE, MCD]
 
     print("=" * 80)
-    print(f"Datasets: {len(datasets)} | Models: {len(model_classes)} | Runs per pair: 25")
+    print(
+        f"Datasets: {len(datasets)} | Models: {len(model_classes)} | Runs per pair: 25"
+    )
     print("=" * 80)
 
     results = run_model_selection(
@@ -105,16 +107,30 @@ def main():
                     {
                         "dataset": dataset_name,
                         "model": model_name,
-                        "mean_prauc": "" if r["mean_prauc"] is None else f"{r['mean_prauc']:.6f}",
-                        "std_prauc": "" if r["std_prauc"] is None else f"{r['std_prauc']:.6f}",
-                        "mean_auroc": "" if r["mean_auroc"] is None else f"{r['mean_auroc']:.6f}",
-                        "std_auroc": "" if r["std_auroc"] is None else f"{r['std_auroc']:.6f}",
-                        "mean_brier": "" if r["mean_brier"] is None else f"{r['mean_brier']:.6f}",
-                        "std_brier": "" if r["std_brier"] is None else f"{r['std_brier']:.6f}",
+                        "mean_prauc": ""
+                        if r["mean_prauc"] is None
+                        else f"{r['mean_prauc']:.6f}",
+                        "std_prauc": ""
+                        if r["std_prauc"] is None
+                        else f"{r['std_prauc']:.6f}",
+                        "mean_auroc": ""
+                        if r["mean_auroc"] is None
+                        else f"{r['mean_auroc']:.6f}",
+                        "std_auroc": ""
+                        if r["std_auroc"] is None
+                        else f"{r['std_auroc']:.6f}",
+                        "mean_brier": ""
+                        if r["mean_brier"] is None
+                        else f"{r['mean_brier']:.6f}",
+                        "std_brier": ""
+                        if r["std_brier"] is None
+                        else f"{r['std_brier']:.6f}",
                         "n_runs": r["n_runs"],
                         "failed": "TRUE" if r.get("failed", False) else "FALSE",
                         "error": r.get("error", ""),
-                        "is_best": "TRUE" if model_name == best_models.get(dataset_name) else "FALSE",
+                        "is_best": "TRUE"
+                        if model_name == best_models.get(dataset_name)
+                        else "FALSE",
                     }
                 )
 

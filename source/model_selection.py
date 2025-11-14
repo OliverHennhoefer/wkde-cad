@@ -128,8 +128,12 @@ def run_model_selection(
             logger.info(f"\nEvaluating {model_class.__name__} on {dataset.name}...")
 
             if (dataset.name, model_class.__name__) in SKIP_COMBINATIONS:
-                logger.warning(f"Skipping {model_class.__name__} on {dataset.name} (configured skip)")
-                result = _create_failure_result(dataset, model_class, Exception("Skipped: too slow"))
+                logger.warning(
+                    f"Skipping {model_class.__name__} on {dataset.name} (configured skip)"
+                )
+                result = _create_failure_result(
+                    dataset, model_class, Exception("Skipped: too slow")
+                )
                 results[dataset.name][model_class.__name__] = result
                 continue
 
