@@ -1,0 +1,28 @@
+# Global settings
+[global]
+experiment_name = "learning_the_null"
+meta_seed = 1  # Prevents data leakage between model selection and experiment
+train_split = 0.7  # Data proportion for training
+selection_folds = 5  # Number of cross-validation folds for model selection
+
+# Experiment list
+[experiments]
+datasets = [
+    "hepatitis",
+    "wbc",
+    #"ionosphere",
+    #"breast",
+    #"cardio",
+    #"musk",
+    #"mammography",
+    #"shuttle"
+]
+models = [
+    "iforest",
+    "loda",
+    "inne",
+    "hbos",
+    "mcd",  # Note: MCD+MUSK combination will be skipped
+    "copod",
+    "ecod"
+]
