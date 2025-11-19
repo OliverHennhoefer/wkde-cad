@@ -1,28 +1,33 @@
 # Global settings
 [global]
 experiment_name = "learning_the_null"
-meta_seeds = [1, 2, 3, 4, 5]  # Control initial data split to prevent data leakage
-train_split = 0.7  # Data proportion for training
+meta_seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+train_split = 0.5  # Data proportion for training
 selection_folds = 10  # Number of cross-validation folds for model selection
+fdr_rate = 0.1  # Nominal false discovery rate for conformal detection
+n_bootstraps = 100  # Number of bootstraps for JackknifeBootstrap strategy
+n_trials = 100  # Number of tuning trials for Probabilistic estimation
+n_test_fixed = 25  # Optional: fixed test set size
+target_anomaly_rates = 0.01 #[0.01, 0.05, 0.10]  # Can be single value or list
+min_anomalies = 3
 
 # Experiment list
 [experiments]
 datasets = [
-    "hepatitis",
-    "wbc",
+    #"hepatitis",
+    #"wbc",
     "ionosphere",
-    "breast",
-    "cardio",
-    "musk",
-    "mammography",
-    "shuttle"
+    #"breast",
+    #"cardio",
+    #"musk",
+    #"mammography",
+    #"shuttle"
 ]
 models = [
     "iforest",
     "loda",
     "inne",
     "hbos",
-    "mcd",  # Note: MCD+MUSK combination will be skipped
     "copod",
     "ecod"
 ]

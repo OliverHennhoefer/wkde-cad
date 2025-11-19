@@ -5,7 +5,6 @@ from pyod.models.hbos import HBOS
 from pyod.models.iforest import IForest
 from pyod.models.inne import INNE
 from pyod.models.loda import LODA
-from pyod.models.mcd import MCD
 
 
 def get_dataset_enum(dataset_name: str) -> Dataset:
@@ -33,7 +32,6 @@ MODEL_MAPPING = {
     "loda": LODA,
     "inne": INNE,
     "hbos": HBOS,
-    "mcd": MCD,
     "copod": COPOD,
     "ecod": ECOD,
 }

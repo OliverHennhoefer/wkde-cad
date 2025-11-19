@@ -316,7 +316,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "nonconform", extras = ["data", "fdr"], specifier = "==0.95.3" }]
+requires-dist = [{ name = "nonconform", extras = ["data", "fdr"], specifier = "==0.95.6" }]
 
 [[package]]
 name = "llvmlite"
@@ -467,7 +467,7 @@ wheels = [
 
 [[package]]
 name = "nonconform"
-version = "0.95.3"
+version = "0.95.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "kdepy" },
@@ -479,9 +479,9 @@ dependencies = [
     { name = "scipy" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ce/c7/9441e7a8a4b398e0bea1a690f48d454be9fdb84a9b42ff005dc3e83bb375/nonconform-0.95.3.tar.gz", hash = "sha256:1ab81e6b13136e4a915c908e025fde1f61c1bdb74ac03c6f1f6b9feb05b5c0f8", size = 427797, upload-time = "2025-11-13T12:48:33.404Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/25/23/cc05b038d554d0ac8ed9d022dcc903f05237d9f6ee04eae05ba056c58a3f/nonconform-0.95.6.tar.gz", hash = "sha256:35df9345c7cba0c517dcbfa7611a2c0a0abb48ff31fcd87b4a8498e3e1cc585b", size = 428257, upload-time = "2025-11-19T14:04:12.27Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/c9/ae6e1617c244a4d8e7ea6056acbb653b7ce1611bd12d4d639f60c215dee5/nonconform-0.95.3-py3-none-any.whl", hash = "sha256:88f9475d26b28d9e1b3f82e6fb9c65e609242e85d76bba18b39f5dd4b0209032", size = 72935, upload-time = "2025-11-13T12:48:31.888Z" },
+    { url = "https://files.pythonhosted.org/packages/82/49/b2fd619c55e6b63776e9453915d5a6a72797852d43fde4af01b26e12d87a/nonconform-0.95.6-py3-none-any.whl", hash = "sha256:98775b882c8f71c37b7ef35a7f3463e8602b715b0157e9732f5dffe3a67db120", size = 73396, upload-time = "2025-11-19T14:04:11.053Z" },
 ]
 
 [package.optional-dependencies]

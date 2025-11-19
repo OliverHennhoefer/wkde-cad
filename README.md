@@ -1,5 +1,8 @@
 # learning-the-null
 
+Model selection won't run if a respective experiments/model_selection/<dataset>.csv exists.
+Experiments won't run if a respective experiments/results/experiment1/<dataset>.csv exists.
+
 Run the model selection that preceded the actual experiments:
 ````bash
 # Basic usage
