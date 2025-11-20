@@ -8,7 +8,16 @@ import pandas as pd
 
 def load_and_validate_csv(file_path: Path) -> pd.DataFrame:
     """Load CSV and validate expected columns."""
-    expected_cols = ["seed", "dataset", "model", "fold", "prauc", "rocauc", "brier", "is_best"]
+    expected_cols = [
+        "seed",
+        "dataset",
+        "model",
+        "fold",
+        "prauc",
+        "rocauc",
+        "brier",
+        "is_best",
+    ]
 
     df = pd.read_csv(file_path)
 
@@ -22,16 +31,20 @@ def load_and_validate_csv(file_path: Path) -> pd.DataFrame:
 def compute_model_summary(df: pd.DataFrame, metric: str = "rocauc") -> pd.DataFrame:
     """Compute summary statistics per model."""
     # Group by model and compute stats
-    summary = df.groupby("model").agg(
-        rocauc_mean=("rocauc", "mean"),
-        rocauc_std=("rocauc", "std"),
-        prauc_mean=("prauc", "mean"),
-        prauc_std=("prauc", "std"),
-        brier_mean=("brier", "mean"),
-        brier_std=("brier", "std"),
-        wins=("is_best", "sum"),
-        total=("is_best", "count"),
-    ).reset_index()
+    summary = (
+        df.groupby("model")
+        .agg(
+            rocauc_mean=("rocauc", "mean"),
+            rocauc_std=("rocauc", "std"),
+            prauc_mean=("prauc", "mean"),
+            prauc_std=("prauc", "std"),
+            brier_mean=("brier", "mean"),
+            brier_std=("brier", "std"),
+            wins=("is_best", "sum"),
+            total=("is_best", "count"),
+        )
+        .reset_index()
+    )
 
     # Sort by chosen metric (descending for rocauc/prauc, ascending for brier)
     ascending = metric == "brier"
@@ -52,7 +65,9 @@ def print_summary_table(summary: pd.DataFrame, dataset_name: str) -> None:
     print("=" * 80)
 
     # Header
-    print(f"{'Model':<10} {'PR-AUC (mean +/- std)':<24} {'ROC-AUC (mean +/- std)':<24} {'Brier':<18} {'Wins'}")
+    print(
+        f"{'Model':<10} {'PR-AUC (mean +/- std)':<24} {'ROC-AUC (mean +/- std)':<24} {'Brier':<18} {'Wins'}"
+    )
     print("-" * 80)
 
     # Rows
@@ -69,12 +84,16 @@ def print_summary_table(summary: pd.DataFrame, dataset_name: str) -> None:
 
 def print_csv_output(summary: pd.DataFrame, dataset_name: str) -> None:
     """Print summary in CSV format."""
-    print("model,rocauc_mean,rocauc_std,prauc_mean,prauc_std,brier_mean,brier_std,wins,total")
+    print(
+        "model,rocauc_mean,rocauc_std,prauc_mean,prauc_std,brier_mean,brier_std,wins,total"
+    )
     for _, row in summary.iterrows():
-        print(f"{row['model']},{row['rocauc_mean']:.4f},{row['rocauc_std']:.4f},"
-              f"{row['prauc_mean']:.4f},{row['prauc_std']:.4f},"
-              f"{row['brier_mean']:.4f},{row['brier_std']:.4f},"
-              f"{int(row['wins'])},{int(row['total'])}")
+        print(
+            f"{row['model']},{row['rocauc_mean']:.4f},{row['rocauc_std']:.4f},"
+            f"{row['prauc_mean']:.4f},{row['prauc_std']:.4f},"
+            f"{row['brier_mean']:.4f},{row['brier_std']:.4f},"
+            f"{int(row['wins'])},{int(row['total'])}"
+        )
 
 
 def process_file(file_path: Path, metric: str, output_format: str) -> None:
@@ -99,21 +118,16 @@ Examples:
   python -m code.utils.model_summary experiments/model_selection/breast.csv
   python -m code.utils.model_summary experiments/model_selection/*.csv --metric prauc
   python -m code.utils.model_summary experiments/model_selection/breast.csv --format csv
-        """
+        """,
     )
 
-    parser.add_argument(
-        "files",
-        nargs="+",
-        type=Path,
-        help="CSV file(s) to analyze"
-    )
+    parser.add_argument("files", nargs="+", type=Path, help="CSV file(s) to analyze")
 
     parser.add_argument(
         "--metric",
         choices=["prauc", "rocauc", "brier"],
         default="prauc",
-        help="Metric to sort by (default: prauc)"
+        help="Metric to sort by (default: prauc)",
     )
 
     parser.add_argument(
@@ -121,7 +135,7 @@ Examples:
         choices=["table", "csv"],
         default="table",
         dest="output_format",
-        help="Output format (default: table)"
+        help="Output format (default: table)",
     )
 
     args = parser.parse_args()
