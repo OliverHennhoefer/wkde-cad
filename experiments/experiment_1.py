@@ -199,9 +199,8 @@ results_dir.mkdir(parents=True, exist_ok=True)
 fdr_rate = cfg["global"]["fdr_rate"]
 n_bootstraps = cfg["global"]["n_bootstraps"]
 n_trials = cfg["global"]["n_trials"]
-train_sizes = cfg["global"]["train_sizes"]
-test_sizes = cfg["global"]["test_sizes"]
-n_anomalies_fixed = cfg["global"]["n_anomalies_fixed"]
+test_use_proportion = cfg["global"]["test_use_proportion"]
+test_anomaly_rate = cfg["global"]["test_anomaly_rate"]
 
 # Load approaches to run
 approaches_to_run = cfg["global"]["approaches"]
@@ -248,175 +247,180 @@ for ds_name in datasets:
             random_state=seed,
         )
 
-        for train_size in train_sizes:
-            # Validate sufficient training samples
-            if train_size > len(normal_train):
-                logger.warning(
-                    f"{ds_name}: train_size {train_size} exceeds available normal samples ({len(normal_train)}), skipping"
+        # Use all training data
+        X_train = normal_train.drop(columns=["Class"]).values
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        train_size = len(X_train_scaled)
+
+        # Compute test set sizes from configuration
+        total_test_available = len(normal_test) + len(anomaly_test)
+        test_size = round(test_use_proportion * total_test_available)
+        n_anomalies_test = round(test_size * test_anomaly_rate)
+        n_normal_test = test_size - n_anomalies_test
+
+        # Ensure at least 1 anomaly
+        if n_anomalies_test < 1:
+            logger.warning(
+                f"{ds_name}: computed n_anomalies_test={n_anomalies_test} < 1, using 1"
+            )
+            n_anomalies_test = 1
+            n_normal_test = test_size - 1
+
+        # Validate sufficient test samples
+        if n_normal_test < 1:
+            logger.error(
+                f"{ds_name}: invalid configuration resulted in n_normal_test < 1, skipping"
+            )
+            continue
+        if n_normal_test > len(normal_test):
+            logger.warning(
+                f"{ds_name}: computed n_normal_test {n_normal_test} exceeds available normal test samples ({len(normal_test)}), skipping"
+            )
+            continue
+        if n_anomalies_test > len(anomaly_test):
+            logger.warning(
+                f"{ds_name}: computed n_anomalies_test {n_anomalies_test} exceeds available anomaly test samples ({len(anomaly_test)}), skipping"
+            )
+            continue
+
+        # Sample test data with computed sizes
+        normal_test_sampled = normal_test.sample(n=n_normal_test, random_state=seed)
+        anomaly_test_sampled = anomaly_test.sample(
+            n=n_anomalies_test, random_state=seed
+        )
+
+        X_test = (
+            pd.concat([normal_test_sampled, anomaly_test_sampled])
+            .drop(columns=["Class"])
+            .values
+        )
+        y_test = np.concatenate(
+            [
+                np.zeros(len(normal_test_sampled)),
+                np.ones(len(anomaly_test_sampled)),
+            ]
+        )
+        X_test_scaled = scaler.transform(X_test)
+
+        actual_anomaly_rate = n_anomalies_test / test_size
+
+        # Create weight estimator for weighted approaches
+        weight_estimator = BootstrapBaggedWeightEstimator(
+            base_estimator=LogisticWeightEstimator(),
+            n_bootstrap=n_bootstraps,
+        )
+
+        # Define all four approaches
+        all_approaches = {
+            "empirical": {
+                "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
+                "estimation": Empirical(),
+                "weight_estimator": None,
+                "weighted": False,
+            },
+            "probabilistic": {
+                "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
+                "estimation": Probabilistic(n_trials=n_trials),
+                "weight_estimator": None,
+                "weighted": False,
+            },
+            "empirical_weighted": {
+                "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
+                "estimation": Empirical(),
+                "weight_estimator": weight_estimator,
+                "weighted": True,
+            },
+            "probabilistic_weighted": {
+                "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
+                "estimation": Probabilistic(n_trials=n_trials),
+                "weight_estimator": weight_estimator,
+                "weighted": True,
+            },
+        }
+
+        # Filter to only configured approaches
+        approaches = {
+            k: v for k, v in all_approaches.items() if k in approaches_to_run
+        }
+
+        # Validate that all configured approaches are valid
+        invalid_approaches = set(approaches_to_run) - set(all_approaches.keys())
+        if invalid_approaches:
+            raise ValueError(
+                f"Invalid approaches in config: {invalid_approaches}. "
+                f"Valid options are: {list(all_approaches.keys())}"
+            )
+
+        for approach_name, approach_config in approaches.items():
+            detector_kwargs = {
+                "detector": get_model_instance(model_name),
+                "strategy": approach_config["strategy"],
+                "seed": seed,
+            }
+            if approach_config["estimation"] is not None:
+                detector_kwargs["estimation"] = approach_config["estimation"]
+            if approach_config["weight_estimator"] is not None:
+                detector_kwargs["weight_estimator"] = approach_config[
+                    "weight_estimator"
+                ]
+
+            detector = ConformalDetector(**detector_kwargs)
+            detector.fit(X_train_scaled)
+            p_values = detector.predict(X_test_scaled)
+
+            # Apply appropriate FDR control
+            if approach_config["weighted"]:
+                # Use weighted FDR control for weighted approaches
+                decisions = weighted_false_discovery_control(
+                    detector.last_result, alpha=fdr_rate
                 )
-                continue
-
-            # Sample training data
-            normal_train_sampled = normal_train.sample(n=train_size, random_state=seed)
-            X_train = normal_train_sampled.drop(columns=["Class"]).values
-            scaler = StandardScaler()
-            X_train_scaled = scaler.fit_transform(X_train)
-
-            for test_size in test_sizes:
-                # Calculate normal samples needed
-                n_normal_test = test_size - n_anomalies_fixed
-
-                # Validate sufficient test samples
-                if n_normal_test > len(normal_test):
-                    logger.warning(
-                        f"{ds_name}: test_size {test_size} requires {n_normal_test} normal samples but only {len(normal_test)} available, skipping"
-                    )
-                    continue
-                if n_anomalies_fixed > len(anomaly_test):
-                    logger.warning(
-                        f"{ds_name}: n_anomalies_fixed {n_anomalies_fixed} exceeds available anomaly test samples ({len(anomaly_test)}), skipping"
-                    )
-                    continue
-
-                # Sample test data with fixed anomalies
-                normal_test_sampled = normal_test.sample(
-                    n=n_normal_test, random_state=seed
-                )
-                anomaly_test_sampled = anomaly_test.sample(
-                    n=n_anomalies_fixed, random_state=seed
+            else:
+                # Use standard BH FDR control for non-weighted approaches
+                decisions = (
+                    false_discovery_control(p_values, method="bh") <= fdr_rate
                 )
 
-                X_test = (
-                    pd.concat([normal_test_sampled, anomaly_test_sampled])
-                    .drop(columns=["Class"])
-                    .values
-                )
-                y_test = np.concatenate(
-                    [
-                        np.zeros(len(normal_test_sampled)),
-                        np.ones(len(anomaly_test_sampled)),
-                    ]
-                )
-                X_test_scaled = scaler.transform(X_test)
+            fdr = false_discovery_rate(y=y_test, y_hat=decisions)
+            power = statistical_power(y=y_test, y_hat=decisions)
 
-                actual_anomaly_rate = n_anomalies_fixed / test_size
-
-                # Create weight estimator for weighted approaches
-                weight_estimator = BootstrapBaggedWeightEstimator(
-                    base_estimator=LogisticWeightEstimator(),
-                    n_bootstrap=n_bootstraps,
-                )
-
-                # Define all four approaches
-                all_approaches = {
-                    "empirical": {
-                        "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
-                        "estimation": Empirical(),
-                        "weight_estimator": None,
-                        "weighted": False,
-                    },
-                    "probabilistic": {
-                        "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
-                        "estimation": Probabilistic(n_trials=n_trials),
-                        "weight_estimator": None,
-                        "weighted": False,
-                    },
-                    "empirical_weighted": {
-                        "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
-                        "estimation": Empirical(),
-                        "weight_estimator": weight_estimator,
-                        "weighted": True,
-                    },
-                    "probabilistic_weighted": {
-                        "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
-                        "estimation": Probabilistic(n_trials=n_trials),
-                        "weight_estimator": weight_estimator,
-                        "weighted": True,
-                    },
-                }
-
-                # Filter to only configured approaches
-                approaches = {
-                    k: v for k, v in all_approaches.items() if k in approaches_to_run
-                }
-
-                # Validate that all configured approaches are valid
-                invalid_approaches = set(approaches_to_run) - set(all_approaches.keys())
-                if invalid_approaches:
-                    raise ValueError(
-                        f"Invalid approaches in config: {invalid_approaches}. "
-                        f"Valid options are: {list(all_approaches.keys())}"
-                    )
-
-                for approach_name, approach_config in approaches.items():
-                    detector_kwargs = {
-                        "detector": get_model_instance(model_name),
-                        "strategy": approach_config["strategy"],
+            # Write result immediately to CSV
+            result_row = pd.DataFrame(
+                [
+                    {
                         "seed": seed,
+                        "dataset": ds_name,
+                        "model": model_name,
+                        "approach": approach_name,
+                        "train_size": train_size,
+                        "test_size": test_size,
+                        "n_train": len(X_train_scaled),
+                        "n_test": test_size,
+                        "n_test_normal": n_normal_test,
+                        "n_test_anomaly": n_anomalies_test,
+                        "actual_anomaly_rate": round(actual_anomaly_rate, 3),
+                        "fdr": round(fdr, 3),
+                        "power": round(power, 3),
                     }
-                    if approach_config["estimation"] is not None:
-                        detector_kwargs["estimation"] = approach_config["estimation"]
-                    if approach_config["weight_estimator"] is not None:
-                        detector_kwargs["weight_estimator"] = approach_config[
-                            "weight_estimator"
-                        ]
+                ]
+            )
+            result_row.to_csv(
+                results_csv,
+                mode="a",
+                header=not csv_header_written,
+                index=False,
+            )
+            csv_header_written = True
 
-                    detector = ConformalDetector(**detector_kwargs)
-                    detector.fit(X_train_scaled)
-                    p_values = detector.predict(X_test_scaled)
-
-                    # Apply appropriate FDR control
-                    if approach_config["weighted"]:
-                        # Use weighted FDR control for weighted approaches
-                        decisions = weighted_false_discovery_control(
-                            detector.last_result, alpha=fdr_rate
-                        )
-                    else:
-                        # Use standard BH FDR control for non-weighted approaches
-                        decisions = (
-                            false_discovery_control(p_values, method="bh") <= fdr_rate
-                        )
-
-                    fdr = false_discovery_rate(y=y_test, y_hat=decisions)
-                    power = statistical_power(y=y_test, y_hat=decisions)
-
-                    # Write result immediately to CSV
-                    result_row = pd.DataFrame(
-                        [
-                            {
-                                "seed": seed,
-                                "dataset": ds_name,
-                                "model": model_name,
-                                "approach": approach_name,
-                                "train_size": train_size,
-                                "test_size": test_size,
-                                "n_train": len(X_train_scaled),
-                                "n_test": test_size,
-                                "n_test_normal": n_normal_test,
-                                "n_test_anomaly": n_anomalies_fixed,
-                                "actual_anomaly_rate": round(actual_anomaly_rate, 3),
-                                "fdr": round(fdr, 3),
-                                "power": round(power, 3),
-                            }
-                        ]
-                    )
-                    result_row.to_csv(
-                        results_csv,
-                        mode="a",
-                        header=not csv_header_written,
-                        index=False,
-                    )
-                    csv_header_written = True
-
-                    logger.info(
-                        f"{ds_name} (seed {seed}, {approach_name}, train={train_size}, test={test_size}) - FDR: {fdr:.3f}, Power: {power:.3f}"
-                    )
+            logger.info(
+                f"{ds_name} (seed {seed}, {approach_name}, train={train_size}, test={test_size}, anom_rate={actual_anomaly_rate:.3f}) - FDR: {fdr:.3f}, Power: {power:.3f}"
+            )
 
     # Read the incrementally written results and compute summary rows
     df_results = pd.read_csv(results_csv)
 
-    # Group by approach, train_size, and test_size for summary
-    group_cols = ["dataset", "model", "approach", "train_size", "test_size"]
+    # Group by approach, train_size, and test_size for summary (aggregate across all models/trials)
+    group_cols = ["dataset", "approach", "train_size", "test_size"]
     summary = (
         df_results.groupby(group_cols)
         .agg(
@@ -435,6 +439,7 @@ for ds_name in datasets:
 
     # Format summary rows
     summary["seed"] = "mean"
+    summary["model"] = "all_models"
     summary["fdr"] = summary.apply(
         lambda r: f"{r['fdr_mean']:.3f}±{r['fdr_std']:.3f}", axis=1
     )

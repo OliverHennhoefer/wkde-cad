@@ -1,27 +1,25 @@
 # Global settings
 [global]
-experiment_name = "learning_the_null"
 meta_seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-train_split = 0.5  # Data proportion for training
-selection_folds = 10  # Number of cross-validation folds for model selection
-fdr_rate = 0.1  # Nominal false discovery rate for conformal detection
-n_bootstraps = 100  # Number of bootstraps for JackknifeBootstrap strategy
-n_trials = 100  # Number of tuning trials for Probabilistic estimation
-n_test_fixed = 25  # Optional: fixed test set size
-target_anomaly_rates = 0.01 #[0.01, 0.05, 0.10]  # Can be single value or list
-min_anomalies = 3
+train_split = 0.5           # Data proportion for training (and calibration)
+selection_folds = 10        # Number of cross-validation folds for model selection
+fdr_rate = 0.1              # Nominal false discovery rate for conformal detection
+n_bootstraps = 100          # Number of bootstraps for JackknifeBootstrap strategy
+n_trials = 100              # Number of tuning trials for Probabilistic estimation
+test_use_proportion = 0.5   # Proportion of test fold to use (0.5 = 50% of test split)
+test_anomaly_rate = 0.05    # Target anomaly rate in test set (0.05 = 5% anomalies)
+approaches = ["empirical", "probabilistic", "empirical_weighted", "probabilistic_weighted"]
 
 # Experiment list
 [experiments]
 datasets = [
-    #"hepatitis",
-    #"wbc",
+    "wbc",
     "ionosphere",
-    #"breast",
-    #"cardio",
-    #"musk",
-    #"mammography",
-    #"shuttle"
+    "breast",
+    "cardio",
+    "musk",
+    "mammography",
+    "shuttle"
 ]
 models = [
     "iforest",

@@ -38,9 +38,7 @@ def load_and_validate_csv(file_path: Path) -> pd.DataFrame:
     return df
 
 
-def compute_experiment_summary(
-    df: pd.DataFrame, group_by: list[str]
-) -> pd.DataFrame:
+def compute_experiment_summary(df: pd.DataFrame, group_by: list[str]) -> pd.DataFrame:
     """Compute summary statistics grouped by specified columns.
 
     Args:
@@ -86,9 +84,7 @@ def print_summary_table(
 
     # Build header dynamically based on grouping
     header_parts = [f"{col.capitalize():<20}" for col in group_by]
-    header_parts.extend(
-        ["FDR (mean +/- std)      ", "Power (mean +/- std)    ", "N"]
-    )
+    header_parts.extend(["FDR (mean +/- std)      ", "Power (mean +/- std)    ", "N"])
     print("".join(header_parts))
     print("-" * 100)
 
@@ -127,9 +123,7 @@ def print_csv_output(summary: pd.DataFrame, group_by: list[str]) -> None:
         print(",".join(values))
 
 
-def process_file(
-    file_path: Path, group_by: list[str], output_format: str
-) -> None:
+def process_file(file_path: Path, group_by: list[str], output_format: str) -> None:
     """Process a single CSV file."""
     df = load_and_validate_csv(file_path)
     dataset_name = df["dataset"].iloc[0] if "dataset" in df.columns else file_path.stem
@@ -148,9 +142,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m code.utils.experiment_summary experiments/results/experiment1/ionosphere.csv
-  python -m code.utils.experiment_summary experiments/results/experiment1/*.csv --group-by approach train_size
-  python -m code.utils.experiment_summary experiments/results/experiment1/ionosphere.csv --format csv
+  python -m code.scripts.experiment_summary experiments/results/experiment1/ionosphere.csv
+  python -m code.scripts.experiment_summary experiments/results/experiment1/*.csv --group-by approach train_size
+  python -m code.scripts.experiment_summary experiments/results/experiment1/ionosphere.csv --format csv
         """,
     )
 

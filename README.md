@@ -55,16 +55,16 @@ python experiments/experiment_1.py  # Runs Phase 1 first
 
 ```bash
 # Basic usage
-uv run python -m code.utils.model_summary experiments/model_selection/breast.csv
+uv run python -m code.scripts.model_summary experiments/model_selection/breast.csv
 
 # Sort by different metric
-uv run python -m code.utils.model_summary experiments/model_selection/breast.csv --metric prauc
+uv run python -m code.scripts.model_summary experiments/model_selection/breast.csv --metric prauc
 
 # CSV output
-uv run python -m code.utils.model_summary experiments/model_selection/breast.csv --format csv
+uv run python -m code.scripts.model_summary experiments/model_selection/breast.csv --format csv
 
 # Multiple files
-uv run python -m code.utils.model_summary experiments/model_selection/*.csv
+uv run python -m code.scripts.model_summary experiments/model_selection/*.csv
 ```
 
 ### Phase 2: Experimentation
@@ -81,19 +81,19 @@ python experiments/experiment_1.py  # Runs Phase 2 with best models
 
 ```bash
 # Group by approach only (default)
-uv run python -m code.utils.experiment_summary experiments/results/experiment1/ionosphere.csv
+uv run python -m code.scripts.experiment_summary experiments/results/experiment1/ionosphere.csv
 
 # Group by approach and train_size
-uv run python -m code.utils.experiment_summary experiments/results/experiment1/ionosphere.csv --group-by approach train_size
+uv run python -m code.scripts.experiment_summary experiments/results/experiment1/ionosphere.csv --group-by approach train_size
 
 # Group by approach, train_size, and test_size (full detail)
-uv run python -m code.utils.experiment_summary experiments/results/experiment1/ionosphere.csv --group-by approach train_size test_size
+uv run python -m code.scripts.experiment_summary experiments/results/experiment1/ionosphere.csv --group-by approach train_size test_size
 
 # CSV output for processing
-uv run python -m code.utils.experiment_summary experiments/results/experiment1/*.csv --format csv
+uv run python -m code.scripts.experiment_summary experiments/results/experiment1/*.csv --format csv
 
 # Multiple datasets
-uv run python -m code.utils.experiment_summary experiments/results/experiment1/*.csv
+uv run python -m code.scripts.experiment_summary experiments/results/experiment1/*.csv
 ```
 
 ## Project Structure
@@ -102,11 +102,12 @@ uv run python -m code.utils.experiment_summary experiments/results/experiment1/*
 learning-the-null/
 ├── code/
 │   ├── config.toml          # Main configuration
-│   ├── utils/
+│   ├── scripts/
 │   │   ├── model_summary.py       # Model selection summarization
-│   │   ├── experiment_summary.py  # Experiment results summarization
-│   │   ├── registry.py            # Dataset and model registry
-│   │   └── logger.py              # Logging utilities
+│   │   └── experiment_summary.py  # Experiment results summarization
+│   └── utils/
+│       ├── registry.py            # Dataset and model registry
+│       └── logger.py              # Logging utilities
 ├── experiments/
 │   ├── experiment_1.py      # Main experiment script
 │   ├── model_selection/     # Phase 1 results
