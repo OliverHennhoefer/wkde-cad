@@ -15,7 +15,6 @@ approaches = ["empirical", "probabilistic", "empirical_weighted", "probabilistic
 datasets = [
     "wbc",
     "ionosphere",
-    "breast",
     "cardio",
     "musk",
     "mammography",

@@ -79,7 +79,7 @@ seed,dataset,model,approach,train_size,test_size,n_train,n_test,n_test_normal,n_
 20,ionosphere,inne,probabilistic,112,88,112,88,84,4,0.045,0.0,0.0
 20,ionosphere,inne,empirical_weighted,112,88,112,88,84,4,0.045,0.0,0.0
 20,ionosphere,inne,probabilistic_weighted,112,88,112,88,84,4,0.045,0.0,0.0
-mean,ionosphere,inne,empirical,112,88,112,88,84,4,0.045,0.000±0.000,0.000±0.000
-mean,ionosphere,inne,empirical_weighted,112,88,112,88,84,4,0.045,0.000±0.000,0.000±0.000
-mean,ionosphere,inne,probabilistic,112,88,112,88,84,4,0.045,0.056±0.147,0.212±0.391
-mean,ionosphere,inne,probabilistic_weighted,112,88,112,88,84,4,0.045,0.013±0.056,0.062±0.197
+mean,ionosphere,all_models,empirical,112,88,112,88,84,4,0.045,0.000±0.000,0.000±0.000
+mean,ionosphere,all_models,empirical_weighted,112,88,112,88,84,4,0.045,0.000±0.000,0.000±0.000
+mean,ionosphere,all_models,probabilistic,112,88,112,88,84,4,0.045,0.056±0.147,0.212±0.391
+mean,ionosphere,all_models,probabilistic_weighted,112,88,112,88,84,4,0.045,0.013±0.056,0.062±0.197
