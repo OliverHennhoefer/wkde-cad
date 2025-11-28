@@ -210,3 +210,6 @@ marimo/_lsp/
 __marimo__/
 /.claude
 .claude/settings.local.json
+/nul
+/.oddball-cache/
+/.claude/

@@ -1,4 +1,4 @@
-from nonconform.utils.data import Dataset
+from oddball import Dataset
 from pyod.models.copod import COPOD
 from pyod.models.ecod import ECOD
 from pyod.models.hbos import HBOS
@@ -17,14 +17,53 @@ def get_model_instance(model_name: str):
 
 
 DATASET_MAPPING = {
-    "hepatitis": Dataset.HEPATITIS,
-    "wbc": Dataset.WBC,
-    "ionosphere": Dataset.IONOSPHERE,
-    "breast": Dataset.BREAST,
+    "aloi": Dataset.ALOI,
+    "annthyroid": Dataset.ANNTHYROID,
+    "backdoor": Dataset.BACKDOOR,
+    "breastw": Dataset.BREASTW,
+    "campaign": Dataset.CAMPAIGN,
     "cardio": Dataset.CARDIO,
-    "musk": Dataset.MUSK,
+    "cardiotocography": Dataset.CARDIOTOCOGRAPHY,
+    "celeba": Dataset.CELEBA,
+    "census": Dataset.CENSUS,
+    "cover": Dataset.COVER,
+    "donors": Dataset.DONORS,
+    "fault": Dataset.FAULT,
+    "fraud": Dataset.FRAUD,
+    "glass": Dataset.GLASS,
+    "hepatitis": Dataset.HEPATITIS,
+    "http": Dataset.HTTP,
+    "internetads": Dataset.INTERNETADS,
+    "ionosphere": Dataset.IONOSPHERE,
+    "landsat": Dataset.LANDSAT,
+    "letter": Dataset.LETTER,
+    "lymphography": Dataset.LYMPHOGRAPHY,
+    "magic_gamma": Dataset.MAGIC_GAMMA,
     "mammography": Dataset.MAMMOGRAPHY,
+    "mnist": Dataset.MNIST,
+    "musk": Dataset.MUSK,
+    "optdigits": Dataset.OPTDIGITS,
+    "pageblocks": Dataset.PAGEBLOCKS,
+    "pendigits": Dataset.PENDIGITS,
+    "pima": Dataset.PIMA,
+    "satellite": Dataset.SATELLITE,
+    "satimage2": Dataset.SATIMAGE2,
     "shuttle": Dataset.SHUTTLE,
+    "skin": Dataset.SKIN,
+    "smtp": Dataset.SMTP,
+    "spambase": Dataset.SPAMBASE,
+    "speech": Dataset.SPEECH,
+    "stamps": Dataset.STAMPS,
+    "thyroid": Dataset.THYROID,
+    "vertebral": Dataset.VERTEBRAL,
+    "vowels": Dataset.VOWELS,
+    "waveform": Dataset.WAVEFORM,
+    "wbc": Dataset.WBC,
+    "wdbc": Dataset.WDBC,
+    "wilt": Dataset.WILT,
+    "wine": Dataset.WINE,
+    "wpbc": Dataset.WPBC,
+    "yeast": Dataset.YEAST,
 }
 
 MODEL_MAPPING = {

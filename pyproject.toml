@@ -4,5 +4,6 @@ version = "0.1.0"
 description = "Supplementary Code"
 requires-python = ">=3.12"
 dependencies = [
-    "nonconform[data,fdr]==0.95.6",
+    "nonconform[fdr]==0.95.6",
+    "oddball>=1.1.0",
 ]

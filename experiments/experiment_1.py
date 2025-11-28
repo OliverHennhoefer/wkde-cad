@@ -9,12 +9,13 @@ from scipy.stats import false_discovery_control
 from sklearn.model_selection import KFold, train_test_split
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 from sklearn.preprocessing import StandardScaler
-from nonconform.utils.data import load
+from code.utils.data_loader import load
 from nonconform.strategy import JackknifeBootstrap, Probabilistic, Empirical
 from nonconform.detection import ConformalDetector
 from nonconform.detection.weight import (
     BootstrapBaggedWeightEstimator,
     LogisticWeightEstimator,
+    ForestWeightEstimator
 )
 from nonconform.utils.stat import (
     false_discovery_rate,
@@ -235,13 +236,13 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
     actual_anomaly_rate = n_anomalies_test / test_size
 
     # Create weight estimator for weighted approaches
-    #weight_estimator = BootstrapBaggedWeightEstimator(
-    #    base_estimator=LogisticWeightEstimator(),
-    #    n_bootstrap=n_bootstraps,
-    #)
+    weight_estimator = BootstrapBaggedWeightEstimator(
+        base_estimator=ForestWeightEstimator(),
+        n_bootstrap=n_bootstraps,
+    )
 
     # Create weight estimator for weighted approaches
-    weight_estimator = LogisticWeightEstimator()
+    #weight_estimator = LogisticWeightEstimator()
 
     # Define all four approaches
     all_approaches = {
