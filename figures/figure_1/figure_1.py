@@ -5,7 +5,8 @@ from scipy.stats import false_discovery_control
 
 from nonconform.strategy import Split
 from nonconform.detection import ConformalDetector
-from nonconform.utils.data import load, Dataset
+from code.utils.data_loader import load
+from oddball import Dataset
 
 x_train, x_test, y_test = load(Dataset.SHUTTLE, setup=True, seed=42)
 
