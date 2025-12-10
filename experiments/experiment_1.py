@@ -9,7 +9,7 @@ from scipy.stats import false_discovery_control
 from sklearn.model_selection import KFold, train_test_split
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 from sklearn.preprocessing import StandardScaler
-from code.utils.data_loader import load
+from src.utils.data_loader import load
 from nonconform.strategy import JackknifeBootstrap, Probabilistic, Empirical
 from nonconform.detection import ConformalDetector
 from nonconform.detection.weight import (
@@ -22,8 +22,8 @@ from nonconform.utils.stat import (
     statistical_power,
     weighted_false_discovery_control,
 )
-from code.utils.registry import get_dataset_enum, get_model_instance
-from code.utils.logger import get_logger
+from src.utils.registry import get_dataset_enum, get_model_instance
+from src.utils.logger import get_logger
 
 logging.getLogger("nonconform").setLevel(logging.CRITICAL)
 
@@ -37,7 +37,7 @@ N_JOBS = min(mp.cpu_count(), 2) if mp.cpu_count() <= 4 else max(1, mp.cpu_count(
 logger = get_logger()
 
 # Load configuration
-config_path = Path(__file__).parent.parent / "code" / "config.toml"
+config_path = Path(__file__).parent.parent / "src" / "config.toml"
 with open(config_path, "rb") as f:
     cfg = tomllib.load(f)
 
