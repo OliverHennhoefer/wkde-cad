@@ -310,7 +310,7 @@ wheels = [
 [[package]]
 name = "learning-the-null"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "nonconform", extra = ["fdr"] },
     { name = "oddball" },

@@ -7,3 +7,10 @@ dependencies = [
     "nonconform[fdr]==0.95.6",
     "oddball>=1.1.0",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["src*"]

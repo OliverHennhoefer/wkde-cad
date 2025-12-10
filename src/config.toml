@@ -18,12 +18,19 @@ datasets = [
     #"cardio",
     #"musk",
     #"mammography",
-    "breastw"
+    #"breastw"
     #"lymphography"
     #"hepatitis"
     #"vowels",
     #"vertebral",
     #"internetads"
+    #"spambase",
+    #"speech",
+    "thyroid",
+    #"waveform",
+    #"wdbc",
+    #"wilt",
+    #"fault"
 ]
 models = [
     "iforest",
