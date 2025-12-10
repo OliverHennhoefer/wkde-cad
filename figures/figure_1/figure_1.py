@@ -5,7 +5,7 @@ from scipy.stats import false_discovery_control
 
 from nonconform.strategy import Split
 from nonconform.detection import ConformalDetector
-from code.utils.data_loader import load
+from src.utils.data_loader import load
 from oddball import Dataset
 
 x_train, x_test, y_test = load(Dataset.SHUTTLE, setup=True, seed=42)
@@ -26,7 +26,8 @@ SMALL_SIZE = 8
 MEDIUM_SIZE = 9
 LARGE_SIZE = 10
 
-plt.rc("font", size=SMALL_SIZE, family="sans-serif")
+plt.rc("font", size=SMALL_SIZE, family="serif")
+plt.rc("mathtext", fontset="cm")
 plt.rc("axes", titlesize=MEDIUM_SIZE, labelsize=SMALL_SIZE)
 plt.rc("xtick", labelsize=SMALL_SIZE)
 plt.rc("ytick", labelsize=SMALL_SIZE)
