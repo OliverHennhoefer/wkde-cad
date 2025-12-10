@@ -3,8 +3,7 @@ import matplotlib.pyplot as plt
 from pyod.models.iforest import IForest
 from scipy.stats import false_discovery_control
 
-from nonconform.strategy import Split
-from nonconform.detection import ConformalDetector
+from nonconform import ConformalDetector, Split
 from src.utils.data_loader import load
 from oddball import Dataset
 

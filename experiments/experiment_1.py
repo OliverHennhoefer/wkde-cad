@@ -10,14 +10,13 @@ from sklearn.model_selection import KFold, train_test_split
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 from src.utils.data_loader import load
-from nonconform.strategy import JackknifeBootstrap, Probabilistic, Empirical
-from nonconform.detection import ConformalDetector
-from nonconform.detection.weight import (
+from nonconform import (
+    ConformalDetector,
+    JackknifeBootstrap,
+    Probabilistic,
+    Empirical,
     BootstrapBaggedWeightEstimator,
-    LogisticWeightEstimator,
-    ForestWeightEstimator
-)
-from nonconform.utils.stat import (
+    forest_weight_estimator,
     false_discovery_rate,
     statistical_power,
     weighted_false_discovery_control,
@@ -110,7 +109,7 @@ def process_seed_phase1(seed, ds_name, normal, anomaly, empirical_anomaly_rate, 
             X_train = scaler.fit_transform(X_train)
             X_test = scaler.transform(X_test)
 
-            model = get_model_instance(model_name)
+            model = get_model_instance(model_name, random_state=seed)
             model.fit(X_train)
             y_scores = model.decision_function(X_test)
 
@@ -237,7 +236,7 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
 
     # Create weight estimator for weighted approaches
     weight_estimator = BootstrapBaggedWeightEstimator(
-        base_estimator=ForestWeightEstimator(),
+        base_estimator=forest_weight_estimator(),
         n_bootstrap=n_bootstraps,
     )
 
@@ -282,7 +281,7 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
 
     for approach_name, approach_config in approaches.items():
         detector_kwargs = {
-            "detector": get_model_instance(model_name),
+            "detector": get_model_instance(model_name, random_state=seed),
             "strategy": approach_config["strategy"],
             "seed": seed,
         }

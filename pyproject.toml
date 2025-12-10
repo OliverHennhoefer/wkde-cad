@@ -4,8 +4,10 @@ version = "0.1.0"
 description = "Supplementary Code"
 requires-python = ">=3.12"
 dependencies = [
-    "nonconform[fdr]==0.95.6",
-    "oddball>=1.1.0",
+    "nonconform==0.98.0",
+    "oddball==1.3.0",
+    "online-fdr==0.0.3",
+    "pyod==2.0.5"
 ]
 
 [build-system]

@@ -11,9 +11,12 @@ def get_dataset_enum(dataset_name: str) -> Dataset:
     return getattr(Dataset, dataset_name.upper())
 
 
-def get_model_instance(model_name: str):
+def get_model_instance(model_name: str, random_state: int | None = None):
     model_class = MODEL_MAPPING[model_name.lower()]
-    return model_class()
+    model = model_class()
+    if random_state is not None and hasattr(model, "random_state"):
+        model.random_state = random_state
+    return model
 
 
 DATASET_MAPPING = {
