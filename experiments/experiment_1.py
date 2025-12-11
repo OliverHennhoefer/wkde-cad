@@ -209,8 +209,18 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
         n_anomalies_test = 1
         n_normal_test = test_size - 1
 
-    # Validate sufficient test samples
-    if n_normal_test < 1 or n_normal_test > len(normal_test) or n_anomalies_test > len(anomaly_test):
+    # Cap anomalies to available amount (use all if not enough)
+    if n_anomalies_test > len(anomaly_test):
+        n_anomalies_test = len(anomaly_test)
+        # Recalculate normal samples to maintain test_size
+        n_normal_test = test_size - n_anomalies_test
+
+    # Cap normal samples to available amount
+    if n_normal_test > len(normal_test):
+        n_normal_test = len(normal_test)
+
+    # Validate we have at least 1 of each
+    if n_normal_test < 1 or n_anomalies_test < 1:
         return None  # Skip this seed
 
     # Sample test data with computed sizes
