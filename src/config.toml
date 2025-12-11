@@ -13,24 +13,15 @@ approaches = ["empirical", "probabilistic", "empirical_weighted", "probabilistic
 # Experiment list
 [experiments]
 datasets = [
-    #"wbc",
-    #"ionosphere",
-    #"cardio",
-    #"musk",
-    #"mammography",
-    #"breastw"
-    #"lymphography"
-    #"hepatitis"
-    #"vowels",
-    #"vertebral",
-    #"internetads"
-    #"spambase",
-    #"speech",
-    "thyroid",
-    #"waveform",
-    #"wdbc",
-    #"wilt",
-    #"fault"
+    "wbc",
+    "ionosphere",
+    "wdbc",
+    "breastw",
+    "vowels",
+    "cardio",
+    "musk",
+    "mammography",
+    "satellite"
 ]
 models = [
     "iforest",
