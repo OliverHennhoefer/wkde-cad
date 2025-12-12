@@ -20,8 +20,8 @@ datasets = [
     "vowels",
     "cardio",
     "musk",
+    "satellite",
     "mammography",
-    "satellite"
 ]
 models = [
     "iforest",
