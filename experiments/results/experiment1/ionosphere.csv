@@ -10,7 +10,7 @@ seed,dataset,model,approach,train_size,test_size,n_train,n_test,n_test_normal,n_
 3,ionosphere,inne,empirical,112,88,112,88,84,4,0.045,0.0,0.0
 3,ionosphere,inne,probabilistic,112,88,112,88,84,4,0.045,0.429,1.0
 3,ionosphere,inne,empirical_weighted,112,88,112,88,84,4,0.045,0.0,0.0
-3,ionosphere,inne,probabilistic_weighted,112,88,112,88,84,4,0.045,0.0,0.0
+3,ionosphere,inne,probabilistic_weighted,112,88,112,88,84,4,0.045,0.2,1.0
 4,ionosphere,inne,empirical,112,88,112,88,84,4,0.045,0.0,0.0
 4,ionosphere,inne,probabilistic,112,88,112,88,84,4,0.045,0.0,0.0
 4,ionosphere,inne,empirical_weighted,112,88,112,88,84,4,0.045,0.0,0.0
@@ -58,11 +58,11 @@ seed,dataset,model,approach,train_size,test_size,n_train,n_test,n_test_normal,n_
 15,ionosphere,inne,empirical,112,88,112,88,84,4,0.045,0.0,0.0
 15,ionosphere,inne,probabilistic,112,88,112,88,84,4,0.045,0.333,1.0
 15,ionosphere,inne,empirical_weighted,112,88,112,88,84,4,0.045,0.0,0.0
-15,ionosphere,inne,probabilistic_weighted,112,88,112,88,84,4,0.045,0.0,0.75
+15,ionosphere,inne,probabilistic_weighted,112,88,112,88,84,4,0.045,0.333,1.0
 16,ionosphere,inne,empirical,112,88,112,88,84,4,0.045,0.0,0.0
 16,ionosphere,inne,probabilistic,112,88,112,88,84,4,0.045,0.4,0.75
 16,ionosphere,inne,empirical_weighted,112,88,112,88,84,4,0.045,0.0,0.0
-16,ionosphere,inne,probabilistic_weighted,112,88,112,88,84,4,0.045,0.0,0.0
+16,ionosphere,inne,probabilistic_weighted,112,88,112,88,84,4,0.045,0.4,0.75
 17,ionosphere,inne,empirical,112,88,112,88,84,4,0.045,0.0,0.0
 17,ionosphere,inne,probabilistic,112,88,112,88,84,4,0.045,0.0,0.0
 17,ionosphere,inne,empirical_weighted,112,88,112,88,84,4,0.045,0.0,0.0
@@ -82,4 +82,4 @@ seed,dataset,model,approach,train_size,test_size,n_train,n_test,n_test_normal,n_
 mean,ionosphere,all_models,empirical,112,88,112,88,84,4,0.045,0.000±0.000,0.000±0.000
 mean,ionosphere,all_models,empirical_weighted,112,88,112,88,84,4,0.045,0.000±0.000,0.000±0.000
 mean,ionosphere,all_models,probabilistic,112,88,112,88,84,4,0.045,0.081±0.150,0.300±0.434
-mean,ionosphere,all_models,probabilistic_weighted,112,88,112,88,84,4,0.045,0.000±0.000,0.037±0.168
+mean,ionosphere,all_models,probabilistic_weighted,112,88,112,88,84,4,0.045,0.047±0.119,0.138±0.339
