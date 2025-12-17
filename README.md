@@ -55,13 +55,13 @@ python experiments/experiment_1.py  # Runs Phase 1 first
 
 ```bash
 # Basic usage
-uv run python -m src.scripts.model_summary experiments/model_selection/breast.csv
+uv run python -m src.scripts.model_summary experiments/model_selection/breastw.csv
 
 # Sort by different metric
-uv run python -m src.scripts.model_summary experiments/model_selection/breast.csv --metric prauc
+uv run python -m src.scripts.model_summary experiments/model_selection/breastw.csv --metric prauc
 
 # CSV output
-uv run python -m src.scripts.model_summary experiments/model_selection/breast.csv --format csv
+uv run python -m src.scripts.model_summary experiments/model_selection/breastw.csv --format csv
 
 # Multiple files
 uv run python -m src.scripts.model_summary experiments/model_selection/*.csv
