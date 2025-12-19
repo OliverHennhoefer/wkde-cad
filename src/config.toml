@@ -21,7 +21,6 @@ datasets = [
     "cardio",
     "musk",
     "satellite",
-    "mnist",
     "mammography",
 ]
 models = [

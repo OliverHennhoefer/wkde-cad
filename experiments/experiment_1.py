@@ -245,10 +245,13 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
     actual_anomaly_rate = n_anomalies_test / test_size
 
     # Create weight estimator for weighted approaches
-    weight_estimator = BootstrapBaggedWeightEstimator(
-        base_estimator=forest_weight_estimator(),
-        n_bootstrap=n_bootstraps,
-    )
+    #weight_estimator = BootstrapBaggedWeightEstimator(
+    #    base_estimator=forest_weight_estimator(),
+    #    n_bootstrap=n_bootstraps,
+    #)
+
+    # Create weight estimator for weighted approaches
+    weight_estimator = forest_weight_estimator()
 
     # Create weight estimator for weighted approaches
     #weight_estimator = LogisticWeightEstimator()
