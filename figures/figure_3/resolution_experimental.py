@@ -27,7 +27,7 @@ def load_experiment_configurations():
     Returns list of tuples: (dataset_name, N_cal, m_batch, k_min, actual_anom_rate)
     """
     # Path to experiment results
-    results_dir = Path(__file__).parent.parent.parent / "experiments" / "results" / "experiment1"
+    results_dir = Path(__file__).parent.parent.parent / "outputs" / "experiment_results"
 
     if not results_dir.exists():
         raise FileNotFoundError(f"Results directory not found: {results_dir}")

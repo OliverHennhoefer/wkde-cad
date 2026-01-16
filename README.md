@@ -17,10 +17,84 @@ This project implements a comprehensive experimentation framework for evaluating
 
 - **Two-phase workflow**: Model selection followed by experimentation
 - **Multiple anomaly detectors**: IForest, LODA, InnE, HBOS, COPOD, ECOD
-- **Flexible configuration**: Configurable approaches, train/test sizes, and parameters
+- **Flexible configuration**: Configurable approaches, test batch sizing, and parameters
 - **Incremental results saving**: Results saved immediately to prevent data loss
 - **FDR control**: Benjamini-Hochberg and weighted FDR control methods
 - **Automated summaries**: Tools for aggregating and analyzing results
+
+# Usage
+
+## Workflow
+
+### Phase 1: Model Selection
+
+Model selection won't run if `outputs/model_selection/<dataset>.csv` exists.
+
+```bash
+python -m src.experiment  # Runs Phase 1 first
+```
+
+Summarize model selection results:
+
+```bash
+# Basic usage
+uv run python -m src.scripts.model_summary outputs/model_selection/breastw.csv
+
+# Sort by different metric
+uv run python -m src.scripts.model_summary outputs/model_selection/breastw.csv --metric prauc
+
+# CSV output
+uv run python -m src.scripts.model_summary outputs/model_selection/breastw.csv --format csv
+
+# Multiple files
+uv run python -m src.scripts.model_summary outputs/model_selection/*.csv
+```
+
+### Phase 2: Experimentation
+
+Experiments won't run if `outputs/experiment_results/<dataset>.csv` exists.
+
+```bash
+python -m src.experiment  # Runs Phase 2 with best models
+```
+
+Results are saved incrementally - each approach's results are written immediately
+to CSV, ensuring no data loss on interruption.
+
+Summarize experiment results:
+
+```bash
+# Group by approach only (default)
+uv run python -m src.scripts.experiment_summary outputs/experiment_results/ionosphere.csv
+
+# Group by approach and train_size
+uv run python -m src.scripts.experiment_summary outputs/experiment_results/ionosphere.csv --group-by approach train_size
+
+# Group by approach, train_size, and test_size (full detail)
+uv run python -m src.scripts.experiment_summary outputs/experiment_results/ionosphere.csv --group-by approach train_size test_size
+
+# CSV output for processing
+uv run python -m src.scripts.experiment_summary outputs/experiment_results/*.csv --format csv
+
+# Multiple datasets
+uv run python -m src.scripts.experiment_summary outputs/experiment_results/*.csv
+```
+
+## Output Format
+
+### Model Selection Results
+
+- Columns: seed, dataset, model, fold, prauc, rocauc, brier, is_best
+- One row per seed with mean statistics
+- Best model marked with `is_best=True`
+
+### Experiment Results
+
+- Columns: seed, dataset, model, approach, train_size, test_size, n_train, n_test,
+  n_test_normal, n_test_anomaly, actual_anomaly_rate, fdr, power
+- Individual results for each (seed, approach, train_size, test_size) combination
+- Summary rows with `seed="mean"` showing aggregated statistics (mean +/- std)
+
 
 ## Configuration
 
@@ -30,12 +104,13 @@ All experiments are configured via `src/config.toml`:
 [global]
 meta_seeds = 20              # Number of seeds (uses 1..20)
 train_split = 0.5             # Proportion of data for training
+selection_folds = 10          # Number of cross-validation folds for model selection
 fdr_rate = 0.1                # Nominal false discovery rate
 n_bootstraps = 100            # Bootstrap iterations
 n_trials = 100                # Probabilistic tuning trials
-train_sizes = [100, 300, 1000]  # Training sizes to vary
-test_sizes = [50, 100]        # Test batch sizes to vary
-n_anomalies_fixed = 3         # Fixed anomalies per test batch
+weight_estimator = "forest"   # "forest" or "forest_bagged"
+test_use_proportion = 0.5     # Proportion of test fold to use (0.5 = 50% of test split)
+test_anomaly_rate = 0.05      # Target anomaly rate in test set (0.05 = 5% anomalies)
 approaches = ["empirical", "empirical_randomized", "probabilistic", "empirical_weighted", "empirical_randomized_weighted", "probabilistic_weighted"]
 
 [experiments]
@@ -45,90 +120,32 @@ models = ["iforest", "loda", "inne", "hbos", "copod", "ecod"]
 
 ## Workflow
 
-### Phase 1: Model Selection
-
-Model selection won't run if `experiments/model_selection/<dataset>.csv` exists.
-
-```bash
-python experiments/experiment_1.py  # Runs Phase 1 first
-```
-
-**Summarize model selection results:**
-
-```bash
-# Basic usage
-uv run python -m src.scripts.model_summary experiments/model_selection/breastw.csv
-
-# Sort by different metric
-uv run python -m src.scripts.model_summary experiments/model_selection/breastw.csv --metric prauc
-
-# CSV output
-uv run python -m src.scripts.model_summary experiments/model_selection/breastw.csv --format csv
-
-# Multiple files
-uv run python -m src.scripts.model_summary experiments/model_selection/*.csv
-```
-
-### Phase 2: Experimentation
-
-Experiments won't run if `experiments/results/experiment1/<dataset>.csv` exists.
-
-```bash
-python experiments/experiment_1.py  # Runs Phase 2 with best models
-```
-
-**Results are saved incrementally** - each approach's results are written immediately to CSV, ensuring no data loss on interruption.
-
-**Summarize experiment results:**
-
-```bash
-# Group by approach only (default)
-uv run python -m src.scripts.experiment_summary experiments/results/experiment1/ionosphere.csv
-
-# Group by approach and train_size
-uv run python -m src.scripts.experiment_summary experiments/results/experiment1/ionosphere.csv --group-by approach train_size
-
-# Group by approach, train_size, and test_size (full detail)
-uv run python -m src.scripts.experiment_summary experiments/results/experiment1/ionosphere.csv --group-by approach train_size test_size
-
-# CSV output for processing
-uv run python -m src.scripts.experiment_summary experiments/results/experiment1/*.csv --format csv
-
-# Multiple datasets
-uv run python -m src.scripts.experiment_summary experiments/results/experiment1/*.csv
-```
+See `docs/usage.md` for run instructions and output formats.
 
 ## Project Structure
 
 ```
 learning-the-null/
-├── src/
-│   ├── config.toml               # Main configuration
-│   ├── scripts/
-│   │   ├── model_summary.py      # Model selection summarization
-│   │   └── experiment_summary.py # Experiment results summarization
-│   └── utils/
-│       ├── data_loader.py        # Data loading utilities
-│       ├── registry.py           # Dataset and model registry
-│       └── logger.py             # Logging utilities
-├── experiments/
-│   ├── experiment_1.py           # Main experiment script
-│   ├── model_selection/          # Phase 1 results
-│   └── results/
-│       └── experiment1/          # Phase 2 results
-└── figures/
-    ├── figure_1/                 # Figure 1 visualization
-    └── figure_3/                 # Figure 3 visualization
+docs/
+  usage.md                       # Workflow and output formats
+outputs/
+  model_selection/               # Phase 1 results
+  experiment_results/            # Phase 2 results
+figures/
+  figure_1/                      # Figure 1 visualization
+  figure_3/                      # Figure 3 visualization
+src/
+  experiment.py                  # Main experiment script
+  config.toml                    # Main configuration
+  scripts/
+    model_summary.py             # Model selection summarization
+    experiment_summary.py        # Experiment results summarization
+  utils/
+    data_loader.py               # Data loading utilities
+    registry.py                  # Dataset and model registry
+    logger.py                    # Logging utilities
 ```
 
 ## Output Format
 
-### Model Selection Results
-- Columns: seed, dataset, model, fold, prauc, rocauc, brier, is_best
-- One row per seed with mean statistics
-- Best model marked with `is_best=True`
-
-### Experiment Results
-- Columns: seed, dataset, model, approach, train_size, test_size, n_train, n_test, n_test_normal, n_test_anomaly, actual_anomaly_rate, fdr, power
-- Individual results for each (seed, approach, train_size, test_size) combination
-- Summary rows with `seed="mean"` showing aggregated statistics (mean ± std)
+See `docs/usage.md` for the detailed output schema.

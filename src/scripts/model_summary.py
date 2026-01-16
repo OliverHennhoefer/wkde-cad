@@ -115,9 +115,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m code.scripts.model_summary experiments/model_selection/breast.csv
-  python -m code.scripts.model_summary experiments/model_selection/*.csv --metric prauc
-  python -m code.scripts.model_summary experiments/model_selection/breast.csv --format csv
+  python -m code.scripts.model_summary outputs/model_selection/breast.csv
+  python -m code.scripts.model_summary outputs/model_selection/*.csv --metric prauc
+  python -m code.scripts.model_summary outputs/model_selection/breast.csv --format csv
         """,
     )
 

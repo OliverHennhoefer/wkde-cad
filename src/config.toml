@@ -1,14 +1,21 @@
 # Global settings
 [global]
-meta_seeds = 20             # Number of seeds (uses 1..20)
-train_split = 0.5           # Data proportion for training (and calibration)
-selection_folds = 10        # Number of cross-validation folds for model selection
-fdr_rate = 0.1              # Nominal false discovery rate for conformal detection
-n_bootstraps = 100          # Number of bootstraps for JackknifeBootstrap strategy
-n_trials = 100              # Number of tuning trials for Probabilistic estimation
-test_use_proportion = 0.5   # Proportion of test fold to use (0.5 = 50% of test split)
-test_anomaly_rate = 0.05    # Target anomaly rate in test set (0.05 = 5% anomalies)
-approaches = ["probabilistic_weighted"]#["empirical", "empirical_randomized", "probabilistic", "empirical_weighted", "empirical_randomized_weighted", "probabilistic_weighted"]
+meta_seeds = 20                     # Number of seeds (uses 1..20)
+train_split = 0.5                   # Data proportion for training (and calibration)
+selection_folds = 10                # Number of cross-validation folds for model selection
+fdr_rate = 0.1                      # Nominal false discovery rate for conformal detection
+n_bootstraps = 100                  # Number of bootstraps for JackknifeBootstrap strategy
+n_trials = 100                      # Number of tuning trials for Probabilistic estimation
+weight_estimator = "forest_bagged"  # Options: "forest", "forest_bagged"
+test_use_proportion = 0.5           # Proportion of test fold to use (0.5 = 50% of test split)
+test_anomaly_rate = 0.05            # Target anomaly rate in test set (0.05 = 5% anomalies)
+approaches = [
+    "empirical",
+    "empirical_randomized",
+    "probabilistic",
+    "empirical_weighted",
+    "empirical_randomized_weighted",
+    "probabilistic_weighted"]
 
 # Experiment list
 [experiments]
@@ -17,10 +24,10 @@ datasets = [
     #"ionosphere",
     #"wdbc",
     #"breastw",
-    #"vowels",
+    "vowels",
     #"cardio",
     #"musk",
-    "satellite",
+    #"satellite",
     #"mammography",
 ]
 models = [

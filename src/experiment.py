@@ -36,7 +36,8 @@ N_JOBS = min(mp.cpu_count(), 2) if mp.cpu_count() <= 4 else max(1, mp.cpu_count(
 logger = get_logger()
 
 # Load configuration
-config_path = Path(__file__).parent.parent / "src" / "config.toml"
+repo_root = Path(__file__).resolve().parent.parent
+config_path = Path(__file__).resolve().parent / "config.toml"
 with open(config_path, "rb") as f:
     cfg = tomllib.load(f)
 
@@ -250,23 +251,26 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
 
     actual_anomaly_rate = n_anomalies_test / test_size
 
-    # Create weight estimator for weighted approaches
-    #weight_estimator = BootstrapBaggedWeightEstimator(
-    #    base_estimator=forest_weight_estimator(),
-    #    n_bootstrap=n_bootstraps,
-    #)
-
-    # Create weight estimator for weighted approaches
-    weight_estimator = forest_weight_estimator()
-
-    # Create weight estimator for weighted approaches
-    #weight_estimator = LogisticWeightEstimator()
+    weight_choice = cfg["global"].get("weight_estimator", "forest")
+    weight_choice = str(weight_choice).strip().lower()
+    if weight_choice == "forest":
+        weight_estimator = forest_weight_estimator()
+    elif weight_choice == "forest_bagged":
+        weight_estimator = BootstrapBaggedWeightEstimator(
+            base_estimator=forest_weight_estimator(),
+            n_bootstrap=n_bootstraps,
+        )
+    else:
+        raise ValueError(
+            f"Invalid weight_estimator '{weight_choice}'. "
+            "Valid options are: 'forest', 'forest_bagged'."
+        )
 
     # Define all four approaches
     all_approaches = {
         "empirical": {
             "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
-            "estimation": Empirical(),
+            "estimation": Empirical(randomize=False),
             "weight_estimator": None,
             "weighted": False,
         },
@@ -284,7 +288,7 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
         },
         "empirical_weighted": {
             "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
-            "estimation": Empirical(),
+            "estimation": Empirical(randomize=False),
             "weight_estimator": weight_estimator,
             "weighted": True,
         },
@@ -373,7 +377,7 @@ if __name__ == '__main__':
     # Phase 1: Model Selection
     ####################################################################################################################
 
-    output_dir = Path(__file__).parent / "model_selection"
+    output_dir = repo_root / "outputs" / "model_selection"
     output_dir.mkdir(exist_ok=True)
 
     for ds_name in datasets:
@@ -420,7 +424,7 @@ if __name__ == '__main__':
     # Phase 2: Experimentation
     ####################################################################################################################
 
-    results_dir = Path(__file__).parent / "results" / "experiment1"
+    results_dir = repo_root / "outputs" / "experiment_results"
     results_dir.mkdir(parents=True, exist_ok=True)
 
     fdr_rate = cfg["global"]["fdr_rate"]
