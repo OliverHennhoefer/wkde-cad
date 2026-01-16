@@ -43,13 +43,19 @@ with open(config_path, "rb") as f:
 datasets = cfg["experiments"]["datasets"]
 datasets = datasets if isinstance(datasets, list) else [datasets]
 
-seed_config = cfg["global"].get("meta_seeds", cfg["global"].get("meta_seed"))
+seed_config = cfg["global"].get("meta_seeds")
 if seed_config is None:
     raise ValueError(
-        "Please provide at least one seed via 'meta_seeds' or 'meta_seed' in config."
+        "Please provide 'meta_seeds' as an integer count in config."
     )
+if not isinstance(seed_config, int) or isinstance(seed_config, bool):
+    raise ValueError(
+        "meta_seeds must be an integer count (e.g., 20 for seeds 1..20)."
+    )
+if seed_config < 1:
+    raise ValueError("meta_seeds must be >= 1.")
 
-seeds = seed_config if isinstance(seed_config, list) else [seed_config]
+seeds = list(range(1, seed_config + 1))
 
 ####################################################################################################################
 # Function Definitions
@@ -264,6 +270,12 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
             "weight_estimator": None,
             "weighted": False,
         },
+        "empirical_randomized": {
+            "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
+            "estimation": Empirical(randomize=True),
+            "weight_estimator": None,
+            "weighted": False,
+        },
         "probabilistic": {
             "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
             "estimation": Probabilistic(n_trials=n_trials),
@@ -273,6 +285,12 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
         "empirical_weighted": {
             "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
             "estimation": Empirical(),
+            "weight_estimator": weight_estimator,
+            "weighted": True,
+        },
+        "empirical_randomized_weighted": {
+            "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
+            "estimation": Empirical(randomize=True),
             "weight_estimator": weight_estimator,
             "weighted": True,
         },
@@ -439,7 +457,14 @@ if __name__ == '__main__':
         anomaly = data[data["Class"] == 1]
 
         # Validate configured approaches before processing
-        all_approaches_keys = {"empirical", "probabilistic", "empirical_weighted", "probabilistic_weighted"}
+        all_approaches_keys = {
+            "empirical",
+            "empirical_randomized",
+            "probabilistic",
+            "empirical_weighted",
+            "empirical_randomized_weighted",
+            "probabilistic_weighted",
+        }
         invalid_approaches = set(approaches_to_run) - all_approaches_keys
         if invalid_approaches:
             raise ValueError(

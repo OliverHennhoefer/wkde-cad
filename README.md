@@ -7,8 +7,10 @@ Experimental testbed for conformal anomaly detection with false discovery rate (
 This project implements a comprehensive experimentation framework for evaluating conformal anomaly detection methods using the [nonconform](https://github.com/OliverHennhoefer/nonconform) library. It compares multiple approaches:
 
 - **Empirical**: Standard conformal prediction with JackknifeBootstrap
+- **Empirical Randomized**: Empirical conformal with randomized tie-breaking
 - **Probabilistic**: Probabilistic conformal prediction with tuning trials
 - **Empirical Weighted**: Weighted conformal prediction with covariate shift handling
+- **Empirical Randomized Weighted**: Weighted empirical conformal with randomized tie-breaking
 - **Probabilistic Weighted**: Weighted probabilistic conformal prediction
 
 ## Key Features
@@ -26,7 +28,7 @@ All experiments are configured via `src/config.toml`:
 
 ```toml
 [global]
-meta_seeds = [1, 2, 3, ...]  # Random seeds for reproducibility
+meta_seeds = 20              # Number of seeds (uses 1..20)
 train_split = 0.5             # Proportion of data for training
 fdr_rate = 0.1                # Nominal false discovery rate
 n_bootstraps = 100            # Bootstrap iterations
@@ -34,7 +36,7 @@ n_trials = 100                # Probabilistic tuning trials
 train_sizes = [100, 300, 1000]  # Training sizes to vary
 test_sizes = [50, 100]        # Test batch sizes to vary
 n_anomalies_fixed = 3         # Fixed anomalies per test batch
-approaches = ["empirical", "probabilistic", "empirical_weighted", "probabilistic_weighted"]
+approaches = ["empirical", "empirical_randomized", "probabilistic", "empirical_weighted", "empirical_randomized_weighted", "probabilistic_weighted"]
 
 [experiments]
 datasets = ["ionosphere", "breast", ...]

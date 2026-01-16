@@ -1,6 +1,6 @@
 # Global settings
 [global]
-meta_seeds = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+meta_seeds = 20             # Number of seeds (uses 1..20)
 train_split = 0.5           # Data proportion for training (and calibration)
 selection_folds = 10        # Number of cross-validation folds for model selection
 fdr_rate = 0.1              # Nominal false discovery rate for conformal detection
@@ -8,20 +8,20 @@ n_bootstraps = 100          # Number of bootstraps for JackknifeBootstrap strate
 n_trials = 100              # Number of tuning trials for Probabilistic estimation
 test_use_proportion = 0.5   # Proportion of test fold to use (0.5 = 50% of test split)
 test_anomaly_rate = 0.05    # Target anomaly rate in test set (0.05 = 5% anomalies)
-approaches = ["empirical", "probabilistic", "empirical_weighted", "probabilistic_weighted"]
+approaches = ["probabilistic_weighted"]#["empirical", "empirical_randomized", "probabilistic", "empirical_weighted", "empirical_randomized_weighted", "probabilistic_weighted"]
 
 # Experiment list
 [experiments]
 datasets = [
-    "wbc",
-    "ionosphere",
-    "wdbc",
-    "breastw",
-    "vowels",
-    "cardio",
-    "musk",
+    #"wbc",
+    #"ionosphere",
+    #"wdbc",
+    #"breastw",
+    #"vowels",
+    #"cardio",
+    #"musk",
     "satellite",
-    "mammography",
+    #"mammography",
 ]
 models = [
     "iforest",
