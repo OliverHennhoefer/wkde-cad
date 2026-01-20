@@ -24,11 +24,11 @@ datasets = [
     #"ionosphere",
     #"wdbc",
     #"breastw",
-    "vowels",
-    #"cardio",
-    #"musk",
-    #"satellite",
-    #"mammography",
+    #"vowels",
+    "cardio",
+    "musk",
+    "satellite",
+    "mammography",
 ]
 models = [
     "iforest",

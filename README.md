@@ -1,6 +1,4 @@
-# learning-the-null
-
-Experimental testbed for conformal anomaly detection with false discovery rate (FDR) control.
+# Between Resolution Collapse and Variance Inflation: Stabilizing Weighted Conformal Anomaly Detection
 
 ## Overview
 
@@ -118,10 +116,6 @@ datasets = ["ionosphere", "breast", ...]
 models = ["iforest", "loda", "inne", "hbos", "copod", "ecod"]
 ```
 
-## Workflow
-
-See `docs/usage.md` for run instructions and output formats.
-
 ## Project Structure
 
 ```
@@ -145,7 +139,3 @@ src/
     registry.py                  # Dataset and model registry
     logger.py                    # Logging utilities
 ```
-
-## Output Format
-
-See `docs/usage.md` for the detailed output schema.
