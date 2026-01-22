@@ -19,7 +19,7 @@ from nonconform import (
     forest_weight_estimator,
     false_discovery_rate,
     statistical_power,
-    weighted_false_discovery_control,
+    weighted_false_discovery_control, Pruning,
 )
 from src.utils.registry import get_dataset_enum, get_model_instance
 from src.utils.logger import get_logger
@@ -57,6 +57,12 @@ if seed_config < 1:
     raise ValueError("meta_seeds must be >= 1.")
 
 seeds = list(range(1, seed_config + 1))
+pruning_choice = str(cfg["global"].get("pruning", "heterogeneous")).strip().lower()
+pruning_method = {
+    "deterministic": Pruning.DETERMINISTIC,
+    "homogeneous": Pruning.HOMOGENEOUS,
+    "heterogeneous": Pruning.HETEROGENEOUS,
+}[pruning_choice]
 
 ####################################################################################################################
 # Function Definitions
@@ -334,7 +340,8 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
         # Apply appropriate FDR control
         if approach_config["weighted"]:
             decisions = weighted_false_discovery_control(
-                detector.last_result, alpha=fdr_rate
+                detector.last_result, alpha=fdr_rate,
+                pruning=pruning_method, seed=seed
             )
         else:
             decisions = (
