@@ -320,7 +320,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "nonconform", specifier = "==0.98.2" },
+    { name = "nonconform", specifier = "==0.98.4" },
     { name = "oddball", specifier = "==1.3.0" },
     { name = "online-fdr", specifier = "==0.0.3" },
     { name = "pyod", specifier = "==2.0.5" },
@@ -477,7 +477,7 @@ wheels = [
 
 [[package]]
 name = "nonconform"
-version = "0.98.2"
+version = "0.98.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "kdepy" },
@@ -488,9 +488,9 @@ dependencies = [
     { name = "scipy" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/21/42/776ae6a37e9b298854ad6974a4492d0b5753c2f7169278ffa478425c027f/nonconform-0.98.2.tar.gz", hash = "sha256:2089d4c59576277bb1d51b035c5a3dec4af3457a99b83552d4716423f90fbf08", size = 416487, upload-time = "2025-12-19T10:46:23.395Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/49/71a75f9011c1176c64927d019e03f207a05dec7473ff9a6173eb8ada65b9/nonconform-0.98.4.tar.gz", hash = "sha256:00ffe7c9e1dc844d0c46c1b70c136848fe2987279f968d15d0eba0ec4c223529", size = 418681, upload-time = "2026-01-27T08:55:19.658Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e9/8e/ff30542fd09bc7faabddd389e2c2e671ad5f05fe2dd6f9722737e6877c4f/nonconform-0.98.2-py3-none-any.whl", hash = "sha256:51ce4a3b2656d863c46aa7e7f61ed13be87cb0c3dd89846855f7f76436a6c971", size = 42534, upload-time = "2025-12-19T10:46:21.92Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/a1/78f5f494f40e21f2261e6c25213a70d9058163b2ed9789ac49f03b8fbdbd/nonconform-0.98.4-py3-none-any.whl", hash = "sha256:b2a19f4de1326d9f4498625df3787bebc0723a64b55232e101acacb8f5897de2", size = 43715, upload-time = "2026-01-27T08:55:17.92Z" },
 ]
 
 [[package]]
