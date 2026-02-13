@@ -7,16 +7,16 @@ fdr_rate = 0.1                      # Nominal false discovery rate for conformal
 n_bootstraps = 100                  # Number of bootstraps for JackknifeBootstrap strategy
 n_trials = 100                      # Number of tuning trials for Probabilistic estimation
 weight_estimator = "forest_bagged"  # Options: "forest", "forest_bagged"
-pruning = "deterministic"           # Options: "deterministic", "homogeneous", "heterogeneous"
+pruning = "heterogeneous"           # Options: "deterministic", "homogeneous", "heterogeneous"
 test_use_proportion = 0.5           # Proportion of test fold to use (0.5 = 50% of test split)
 test_anomaly_rate = 0.05            # Target anomaly rate in test set (0.05 = 5% anomalies)
 approaches = [
-    "empirical",
-    "empirical_randomized",
-    "probabilistic",
+    #"empirical",
+    #"empirical_randomized",
+    #"probabilistic",
     "empirical_weighted",
     "empirical_randomized_weighted",
-    "probabilistic_weighted"
+    #"probabilistic_weighted"
 ]
 
 # Experiment list
