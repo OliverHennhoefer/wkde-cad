@@ -76,6 +76,19 @@ uv run python -m src.scripts.experiment_summary outputs/experiment_results/*.csv
 
 # Multiple datasets
 uv run python -m src.scripts.experiment_summary outputs/experiment_results/*.csv
+
+# Full LaTeX table from deterministic results
+uv run python -m src.scripts.experiment_summary results/deterministic/*.csv --format latex --condition-label Deterministic
+```
+
+Generate pruning comparison plot blocks:
+
+```bash
+# PGFPlots blocks for W. EDF (det./homog./het.) and W. KDE (Ours)
+uv run python -m src.scripts.pruning_summary
+
+# Optional configuration
+uv run python -m src.scripts.pruning_summary --results-root results --trials 20 --mean-precision 3 --sem-precision 4
 ```
 
 ## Output Format
@@ -92,6 +105,12 @@ uv run python -m src.scripts.experiment_summary outputs/experiment_results/*.csv
   n_test_normal, n_test_anomaly, actual_anomaly_rate, fdr, power
 - Individual results for each (seed, approach, train_size, test_size) combination
 - Summary rows with `seed="mean"` showing aggregated statistics (mean +/- std)
+
+### Pruning Summary Output
+
+- Prints PGFPlots `\addplot+` blocks with `mean(power) +- SEM(power)` (`SEM = std/sqrt(n)`, `n=20`)
+- Includes datasets: WBC, Ionosphere, WDBC, BreastCa, Vowels, Cardio, Satellite, Mammogr.
+- Excludes `Musk` intentionally (all methods have identical `1.0` power)
 
 
 ## Configuration
@@ -134,6 +153,7 @@ src/
   scripts/
     model_summary.py             # Model selection summarization
     experiment_summary.py        # Experiment results summarization
+    pruning_summary.py           # Pruning comparison PGFPlots summarization
   utils/
     data_loader.py               # Data loading utilities
     registry.py                  # Dataset and model registry
