@@ -15,11 +15,12 @@ from nonconform import (
     JackknifeBootstrap,
     Probabilistic,
     Empirical,
+)
+from nonconform.metrics import false_discovery_rate, statistical_power
+from nonconform.fdr import weighted_false_discovery_control, Pruning
+from nonconform.weighting import (
     BootstrapBaggedWeightEstimator,
     forest_weight_estimator,
-    false_discovery_rate,
-    statistical_power,
-    weighted_false_discovery_control, Pruning,
 )
 from src.utils.registry import get_dataset_enum, get_model_instance
 from src.utils.logger import get_logger
@@ -264,7 +265,7 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
     elif weight_choice == "forest_bagged":
         weight_estimator = BootstrapBaggedWeightEstimator(
             base_estimator=forest_weight_estimator(),
-            n_bootstrap=n_bootstraps,
+            n_bootstraps=n_bootstraps,
         )
     else:
         raise ValueError(
@@ -276,13 +277,13 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
     all_approaches = {
         "empirical": {
             "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
-            "estimation": Empirical(randomize=False),
+            "estimation": Empirical(tie_break="classical"),
             "weight_estimator": None,
             "weighted": False,
         },
         "empirical_randomized": {
             "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
-            "estimation": Empirical(randomize=True),
+            "estimation": Empirical(tie_break="randomized"),
             "weight_estimator": None,
             "weighted": False,
         },
@@ -294,13 +295,13 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
         },
         "empirical_weighted": {
             "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
-            "estimation": Empirical(randomize=False),
+            "estimation": Empirical(tie_break="classical"),
             "weight_estimator": weight_estimator,
             "weighted": True,
         },
         "empirical_randomized_weighted": {
             "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
-            "estimation": Empirical(randomize=True),
+            "estimation": Empirical(tie_break="randomized"),
             "weight_estimator": weight_estimator,
             "weighted": True,
         },
@@ -335,7 +336,7 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
 
         detector = ConformalDetector(**detector_kwargs)
         detector.fit(x_train_scaled)
-        p_values = detector.predict(x_test_scaled)
+        p_values = detector.compute_p_values(x_test_scaled)
 
         # Apply appropriate FDR control
         if approach_config["weighted"]:
