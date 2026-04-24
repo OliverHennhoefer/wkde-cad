@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import argparse
 import math
 import tomllib
 from pathlib import Path
@@ -223,34 +222,20 @@ def _plot_dataset(
     return output_path
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Visualize rebuttal rejection-sampling covariate shift in 2D."
-    )
-    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--datasets", nargs="+")
-    parser.add_argument("--severities", nargs="+", type=float)
-    parser.add_argument("--seeds", nargs="+", type=int)
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=REPO_ROOT / "outputs" / "rebuttal_covariate_shift_plots",
-    )
-    parser.add_argument("--bins", type=int, default=10)
-    return parser.parse_args()
-
-
 def main() -> None:
-    args = parse_args()
-    with open(args.config, "rb") as f:
+    with open(DEFAULT_CONFIG, "rb") as f:
         cfg = tomllib.load(f)
 
     rebuttal_cfg = cfg["rebuttal_covariate_shift"]
-    datasets = args.datasets or [str(value) for value in _as_list(cfg["experiments"]["datasets"])]
-    severities = args.severities or [
+    datasets = [str(value) for value in _as_list(cfg["experiments"]["datasets"])]
+    severities = [
         float(value) for value in _as_list(rebuttal_cfg["severities"])
     ]
-    seeds = args.seeds or _seed_list(cfg["global"]["meta_seeds"])
+    seeds = _seed_list(cfg["global"]["meta_seeds"])
+    output_dir = Path(rebuttal_cfg["plot_output_dir"])
+    if not output_dir.is_absolute():
+        output_dir = REPO_ROOT / output_dir
+    bins = int(rebuttal_cfg["plot_bins"])
 
     for dataset in datasets:
         normal, feature_columns = _load_normal_data(dataset)
@@ -263,8 +248,8 @@ def main() -> None:
             propensity_min=float(rebuttal_cfg["propensity_min"]),
             propensity_max=float(rebuttal_cfg["propensity_max"]),
             seeds=seeds,
-            output_dir=args.output_dir,
-            bins=args.bins,
+            output_dir=output_dir,
+            bins=bins,
         )
         print(output_path)
 

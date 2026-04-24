@@ -1,13 +1,12 @@
-# Global settings
 [global]
 meta_seeds = 25                     # Number of seeds (uses 1..25)
 train_split = 0.5                   # Data proportion for training (and calibration)
 selection_folds = 10                # Number of cross-validation folds for model selection
 fdr_rate = 0.1                      # Nominal false discovery rate for conformal detection
 n_bootstraps = 100                  # Number of bootstraps for JackknifeBootstrap strategy
-n_trials = 100                      # Number of tuning trials for Probabilistic estimation
+n_trials = 50                       # Number of tuning trials for Probabilistic estimation
 weight_estimator = "forest_bagged"  # Options: "forest", "forest_bagged"
-pruning = "homogeneous"           # Options: "deterministic", "homogeneous", "heterogeneous"
+pruning = "homogeneous"             # Options: "deterministic", "homogeneous", "heterogeneous"
 test_use_proportion = 0.5           # Proportion of test fold to use (0.5 = 50% of test split)
 test_anomaly_rate = 0.05            # Target anomaly rate in test set (0.05 = 5% anomalies)
 approaches = [
@@ -19,7 +18,6 @@ approaches = [
     "probabilistic_weighted"
 ]
 
-# Experiment list
 [experiments]
 datasets = [
     "wbc",
@@ -40,13 +38,16 @@ models = [
     ]
 
 [rebuttal_covariate_shift]
-severities = [1, 4, 16]
+severities = [0.0, 0.5, 1.0, 2.0]
 weight_mode = "estimated"              # Options: "oracle", "estimated"
-propensity_min = 0.02
-propensity_max = 0.98
+propensity_min = 0.25                  # The smaller the less support
+propensity_max = 0.75                  # The larger the less support
 output_dir = "outputs/rebuttal_covariate_shift"
+plot_output_dir = "outputs/rebuttal_covariate_shift_plots"
+plot_seed = 1
+plot_bins = 10
 approaches = [
-    "empirical_weighted",
+    #"empirical_weighted",
     "empirical_randomized_weighted",
-    "probabilistic_weighted"
+    #"probabilistic_weighted"
 ]
