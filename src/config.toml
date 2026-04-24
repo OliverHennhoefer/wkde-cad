@@ -47,7 +47,7 @@ plot_output_dir = "outputs/rebuttal_covariate_shift_plots"
 plot_seed = 1
 plot_bins = 10
 approaches = [
-    #"empirical_weighted",
+    "empirical_weighted",
     "empirical_randomized_weighted",
-    #"probabilistic_weighted"
+    "probabilistic_weighted"
 ]
