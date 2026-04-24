@@ -133,7 +133,7 @@ approaches = ["empirical_weighted", "empirical_randomized_weighted"]
 
 [experiments]
 datasets = ["wbc", "ionosphere", "wdbc", "breastw", "vowels", "cardio", "musk", "satellite", "mammography"]
-models = ["iforest", "loda", "inne", "hbos", "copod", "ecod"]
+models = ["iforest", "loda", "inne", "hbos", "abod"]
 ```
 
 ## Additional docs

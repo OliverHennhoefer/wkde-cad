@@ -1,18 +1,17 @@
 from oddball import Dataset
-from pyod.models.copod import COPOD
-from pyod.models.ecod import ECOD
+from pyod.models.abod import ABOD
 from pyod.models.hbos import HBOS
 from pyod.models.iforest import IForest
 from pyod.models.inne import INNE
 from pyod.models.loda import LODA
-
 
 def get_dataset_enum(dataset_name: str) -> Dataset:
     return getattr(Dataset, dataset_name.upper())
 
 
 def get_model_instance(model_name: str, random_state: int | None = None):
-    model_class = MODEL_MAPPING[model_name.lower()]
+    model_key = model_name.lower()
+    model_class = MODEL_MAPPING[model_key]
     model = model_class()
     if random_state is not None and hasattr(model, "random_state"):
         model.random_state = random_state
@@ -74,6 +73,5 @@ MODEL_MAPPING = {
     "loda": LODA,
     "inne": INNE,
     "hbos": HBOS,
-    "copod": COPOD,
-    "ecod": ECOD,
+    "abod": ABOD,
 }
