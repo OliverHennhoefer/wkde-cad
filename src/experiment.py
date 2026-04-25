@@ -18,12 +18,9 @@ from nonconform import (
 )
 from nonconform.metrics import false_discovery_rate, statistical_power
 from nonconform.fdr import weighted_false_discovery_control, Pruning
-from nonconform.weighting import (
-    BootstrapBaggedWeightEstimator,
-    forest_weight_estimator,
-)
 from src.utils.registry import get_dataset_enum, get_model_instance
 from src.utils.logger import get_logger
+from src.utils.weight_estimators import build_weight_estimator
 
 logging.getLogger("nonconform").setLevel(logging.CRITICAL)
 
@@ -258,20 +255,10 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
 
     actual_anomaly_rate = n_anomalies_test / test_size
 
-    weight_choice = cfg["global"].get("weight_estimator", "forest")
-    weight_choice = str(weight_choice).strip().lower()
-    if weight_choice == "forest":
-        weight_estimator = forest_weight_estimator()
-    elif weight_choice == "forest_bagged":
-        weight_estimator = BootstrapBaggedWeightEstimator(
-            base_estimator=forest_weight_estimator(),
-            n_bootstraps=n_bootstraps,
-        )
-    else:
-        raise ValueError(
-            f"Invalid weight_estimator '{weight_choice}'. "
-            "Valid options are: 'forest', 'forest_bagged'."
-        )
+    weight_estimator = build_weight_estimator(
+        cfg["global"].get("weight_estimator", "forest"),
+        n_bootstraps,
+    )
 
     # Define all four approaches
     all_approaches = {

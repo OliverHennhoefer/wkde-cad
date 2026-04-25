@@ -12,7 +12,6 @@ import pandas as pd
 from nonconform import ConformalDetector, Empirical, JackknifeBootstrap, Probabilistic
 from nonconform.fdr import Pruning, weighted_false_discovery_control
 from nonconform.metrics import false_discovery_rate, statistical_power
-from nonconform.weighting import BootstrapBaggedWeightEstimator, forest_weight_estimator
 from scipy.stats import false_discovery_control
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
@@ -26,6 +25,7 @@ from src.rebuttal.covariate_shift import (
 from src.utils.data_loader import load
 from src.utils.logger import get_logger
 from src.utils.registry import get_dataset_enum, get_model_instance
+from src.utils.weight_estimators import build_weight_estimator
 
 
 logging.getLogger("nonconform").setLevel(logging.CRITICAL)
@@ -57,18 +57,7 @@ def _pruning_method(name: str) -> Pruning:
 
 
 def _build_estimated_weight_estimator(weight_choice: str, n_bootstraps: int):
-    weight_choice = str(weight_choice).strip().lower()
-    if weight_choice == "forest":
-        return forest_weight_estimator()
-    if weight_choice == "forest_bagged":
-        return BootstrapBaggedWeightEstimator(
-            base_estimator=forest_weight_estimator(),
-            n_bootstraps=n_bootstraps,
-        )
-    raise ValueError(
-        f"Invalid weight_estimator '{weight_choice}'. "
-        "Valid options are: 'forest', 'forest_bagged'."
-    )
+    return build_weight_estimator(weight_choice, n_bootstraps)
 
 
 def _make_weight_estimator(
