@@ -22,6 +22,7 @@ from src.rebuttal.covariate_shift import (
     rejection_sample,
     weight_summary,
 )
+from src.model_selection import run_model_selection
 from src.utils.data_loader import load
 from src.utils.logger import get_logger
 from src.utils.registry import get_dataset_enum, get_model_instance
@@ -438,6 +439,16 @@ def run_experiment(
         if results_csv.exists() and not force:
             logger.info(f"Skipping {ds_name} (results exist)")
             continue
+
+        selection_seeds = _seed_list(cfg["global"]["meta_seeds"])
+        run_model_selection(
+            cfg=cfg,
+            datasets=[ds_name],
+            seeds=selection_seeds,
+            output_dir=model_selection_dir,
+            jobs=jobs,
+            logger=logger,
+        )
 
         try:
             best_models = _load_selected_models(model_selection_dir, ds_name)
