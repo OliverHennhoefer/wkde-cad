@@ -9,6 +9,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib import colors
 import numpy as np
 import pandas as pd
 from sklearn.decomposition import PCA
@@ -51,7 +52,7 @@ def _split_diagnostics(
     propensity_min: float,
     propensity_max: float,
     seeds: list[int],
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, Any]:
     model = fit_propensity_model(
         normal[feature_columns],
         train_split=train_split,
@@ -86,7 +87,7 @@ def _split_diagnostics(
         )
         rows.append(seed_rows)
 
-    return pd.concat(rows, ignore_index=True)
+    return pd.concat(rows, ignore_index=True), model
 
 
 def _support_table(diagnostics: pd.DataFrame, bins: int) -> pd.DataFrame:
@@ -107,6 +108,35 @@ def _support_table(diagnostics: pd.DataFrame, bins: int) -> pd.DataFrame:
     return counts
 
 
+def _padded_limits(values: np.ndarray) -> tuple[float, float]:
+    lower = float(np.min(values))
+    upper = float(np.max(values))
+    span = upper - lower
+    if span <= 0.0:
+        return lower - 1.0, upper + 1.0
+    padding = 0.06 * span
+    return lower - padding, upper + padding
+
+
+def _propensity_surface(
+    *,
+    model: Any,
+    scaler: StandardScaler,
+    pca: PCA,
+    xlim: tuple[float, float],
+    ylim: tuple[float, float],
+    resolution: int = 180,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    grid_x = np.linspace(xlim[0], xlim[1], resolution)
+    grid_y = np.linspace(ylim[0], ylim[1], resolution)
+    xx, yy = np.meshgrid(grid_x, grid_y)
+    grid_embedding = np.column_stack([xx.ravel(), yy.ravel()])
+    grid_scaled_features = pca.inverse_transform(grid_embedding)
+    grid_features = scaler.inverse_transform(grid_scaled_features)
+    propensity = model.propensity(grid_features).reshape(xx.shape)
+    return grid_x, grid_y, propensity
+
+
 def _plot_dataset(
     *,
     dataset: str,
@@ -122,8 +152,10 @@ def _plot_dataset(
 ) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     features = normal[feature_columns].to_numpy(dtype=float)
-    scaled = StandardScaler().fit_transform(features)
-    embedding = PCA(n_components=2, random_state=0).fit_transform(scaled)
+    scaler = StandardScaler()
+    scaled = scaler.fit_transform(features)
+    pca = PCA(n_components=2, random_state=0)
+    embedding = pca.fit_transform(scaled)
     embedding_df = pd.DataFrame(
         {
             "pc1": embedding[:, 0],
@@ -131,8 +163,10 @@ def _plot_dataset(
         },
         index=normal.index,
     )
+    xlim = _padded_limits(embedding[:, 0])
+    ylim = _padded_limits(embedding[:, 1])
 
-    n_cols = min(3, len(severities))
+    n_cols = 2 if len(severities) == 4 else min(3, len(severities))
     n_rows = math.ceil(len(severities) / n_cols)
     fig, axes = plt.subplots(
         n_rows,
@@ -145,7 +179,7 @@ def _plot_dataset(
     all_propensities = []
     panel_data = []
     for severity in severities:
-        diagnostics = _split_diagnostics(
+        diagnostics, propensity_model = _split_diagnostics(
             normal=normal,
             feature_columns=feature_columns,
             train_split=train_split,
@@ -158,41 +192,77 @@ def _plot_dataset(
         first_seed = first_seed.join(embedding_df.reset_index(drop=True))
         support = _support_table(diagnostics, bins=bins)
         all_propensities.append(first_seed["propensity"].to_numpy())
-        panel_data.append((severity, first_seed, support))
+        panel_data.append((severity, first_seed, support, propensity_model))
 
     prop_min = float(np.min(np.concatenate(all_propensities)))
     prop_max = float(np.max(np.concatenate(all_propensities)))
+    propensity_cmap = plt.get_cmap("viridis")
+    propensity_norm = colors.Normalize(vmin=prop_min, vmax=prop_max)
+    propensity_mappable = plt.cm.ScalarMappable(
+        norm=propensity_norm,
+        cmap=propensity_cmap,
+    )
 
-    for ax, (severity, first_seed, support) in zip(axes.ravel(), panel_data):
+    for ax, (severity, first_seed, support, propensity_model) in zip(
+        axes.ravel(),
+        panel_data,
+    ):
         calibration = first_seed[first_seed["split"] == "calibration"]
         test = first_seed[first_seed["split"] == "test"]
 
+        grid_x, grid_y, propensity = _propensity_surface(
+            model=propensity_model,
+            scaler=scaler,
+            pca=pca,
+            xlim=xlim,
+            ylim=ylim,
+        )
+        ax.imshow(
+            propensity,
+            extent=(xlim[0], xlim[1], ylim[0], ylim[1]),
+            origin="lower",
+            cmap=propensity_cmap,
+            norm=propensity_norm,
+            alpha=0.22,
+            aspect="auto",
+            interpolation="bilinear",
+            zorder=0,
+        )
+        if np.ptp(propensity) > 0.0:
+            ax.contour(
+                grid_x,
+                grid_y,
+                propensity,
+                levels=6,
+                colors="0.35",
+                linewidths=0.35,
+                alpha=0.22,
+                zorder=1,
+            )
+
+        ax.scatter(
+            test["pc1"],
+            test["pc2"],
+            c="#d62728",
+            edgecolors="white",
+            s=16,
+            alpha=0.88,
+            marker="o",
+            linewidths=0.25,
+            zorder=4,
+            label="test",
+        )
         ax.scatter(
             calibration["pc1"],
             calibration["pc2"],
-            c=calibration["propensity"],
-            cmap="viridis",
-            vmin=prop_min,
-            vmax=prop_max,
-            s=18,
-            alpha=0.28,
+            c="#111111",
+            edgecolors="white",
+            s=12,
+            alpha=0.68,
             marker="o",
-            linewidths=0,
+            linewidths=0.2,
+            zorder=5,
             label="calibration",
-        )
-        points = ax.scatter(
-            test["pc1"],
-            test["pc2"],
-            c=test["propensity"],
-            cmap="viridis",
-            vmin=prop_min,
-            vmax=prop_max,
-            s=30,
-            alpha=0.86,
-            marker="^",
-            edgecolors="black",
-            linewidths=0.25,
-            label="test",
         )
 
         empty_calib_bins = int((support["calibration"] == 0).sum())
@@ -205,12 +275,18 @@ def _plot_dataset(
         )
         ax.set_xlabel("PCA-2 PC1")
         ax.set_ylabel("PCA-2 PC2")
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
         ax.legend(frameon=False, loc="best")
 
     for ax in axes.ravel()[len(panel_data):]:
         ax.axis("off")
 
-    fig.colorbar(points, ax=axes.ravel().tolist(), label="test propensity e(x)")
+    fig.colorbar(
+        propensity_mappable,
+        ax=axes.ravel().tolist(),
+        label="test propensity e(x)",
+    )
     fig.suptitle(
         f"{dataset}: rejection-sampling covariate shift "
         f"(markers show first seed {seeds[0]}; support bins aggregate {len(seeds)} seed(s))"
