@@ -193,6 +193,7 @@ def rejection_sample(
     propensity_model: PropensityModel,
     *,
     seed: int,
+    uniforms: pd.Series | np.ndarray | None = None,
 ) -> RejectionSample:
     """Assign rows to the test-accepted pool by Bernoulli rejection sampling."""
     if len(data) == 0:
@@ -204,9 +205,23 @@ def rejection_sample(
         index=data.index,
         name="test_propensity",
     )
-    rng = np.random.default_rng(seed)
+
+    if uniforms is None:
+        uniform_values = np.random.default_rng(seed).random(len(data))
+    elif isinstance(uniforms, pd.Series):
+        uniform_values = uniforms.loc[data.index].to_numpy(dtype=float)
+    else:
+        uniform_values = np.asarray(uniforms, dtype=float)
+
+    if uniform_values.shape != (len(data),):
+        raise ValueError(
+            "uniforms must be one-dimensional and match the number of data rows."
+        )
+    if np.any((uniform_values < 0.0) | (uniform_values >= 1.0)):
+        raise ValueError("uniforms must lie in [0, 1).")
+
     accepted_mask = pd.Series(
-        rng.binomial(1, probabilities.to_numpy()).astype(bool),
+        uniform_values < probabilities.to_numpy(),
         index=data.index,
     )
     accepted = data.loc[accepted_mask].copy()
@@ -289,4 +304,3 @@ class FixedWeightEstimator(BaseWeightEstimator):
         if len(test_samples) != len(self.test_weights):
             raise ValueError("Test sample count does not match fixed test weights.")
         return self._get_stored_weights()
-

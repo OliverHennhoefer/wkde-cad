@@ -8,6 +8,7 @@ from src.rebuttal.covariate_shift import (
     fit_propensity_model,
     rejection_sample,
 )
+from src.rebuttal.covariate_shift_experiment import _sample_by_priority
 
 
 def _features() -> pd.DataFrame:
@@ -81,6 +82,40 @@ class CovariateShiftTest(unittest.TestCase):
         self.assertEqual(len(sample.accepted) + len(sample.rejected), len(data))
         self.assertTrue(sample.accepted.index.intersection(sample.rejected.index).empty)
         self.assertEqual(len(sample.all_propensity), len(data))
+
+    def test_rejection_sample_can_use_shared_uniforms(self):
+        features = _features()
+        data = features.assign(Class=0)
+        model = fit_propensity_model(
+            features,
+            train_split=0.5,
+            severity=0.0,
+            propensity_min=0.02,
+            propensity_max=0.98,
+        )
+        uniforms = pd.Series(np.linspace(0.0, 0.9875, len(data)), index=data.index)
+
+        sample = rejection_sample(
+            data,
+            ["x1", "x2", "x3"],
+            model,
+            seed=999,
+            uniforms=uniforms,
+        )
+
+        expected_index = uniforms[uniforms < 0.5].index
+        self.assertTrue(sample.accepted.index.equals(expected_index))
+
+    def test_sample_by_priority_is_stable_for_subset(self):
+        data = pd.DataFrame({"value": [10, 20, 30, 40]}, index=[10, 11, 12, 13])
+        priority = pd.Series(
+            [0.4, 0.1, 0.3, 0.2],
+            index=data.index,
+        )
+
+        sampled = _sample_by_priority(data.loc[[10, 12, 13]], 2, priority)
+
+        self.assertTrue(sampled.index.equals(pd.Index([13, 12])))
 
     def test_fixed_weight_estimator_returns_matching_copies_and_rejects_mismatch(self):
         estimator = FixedWeightEstimator(

@@ -142,12 +142,36 @@ def _build_approaches(
     }
 
 
+def _seeded_uniforms(index: pd.Index, seed: int) -> pd.Series:
+    return pd.Series(np.random.default_rng(seed).random(len(index)), index=index)
+
+
+def _sample_by_priority(
+    data: pd.DataFrame,
+    n: int,
+    priority: pd.Series,
+) -> pd.DataFrame:
+    if n > len(data):
+        raise ValueError("Cannot sample more rows than are available.")
+    if n == len(data):
+        return data.copy()
+
+    selected_index = (
+        priority.loc[data.index]
+        .sort_values(kind="mergesort")
+        .head(n)
+        .index
+    )
+    return data.loc[selected_index].copy()
+
+
 def _split_anomaly_candidates(
     anomaly: pd.DataFrame,
     feature_columns: list[str],
     propensity_model,
     train_split: float,
     seed: int,
+    assignment_uniforms: pd.Series | None = None,
 ) -> tuple[pd.DataFrame, pd.Series]:
     if len(anomaly) < 2:
         return anomaly.copy(), pd.Series(
@@ -160,6 +184,7 @@ def _split_anomaly_candidates(
         feature_columns,
         propensity_model,
         seed=seed + 10_000,
+        uniforms=assignment_uniforms,
     )
     if len(sampled.accepted) > 0:
         return sampled.accepted, sampled.accepted_propensity
@@ -202,11 +227,17 @@ def process_shift_seed(
         propensity_min=float(rebuttal_cfg["propensity_min"]),
         propensity_max=float(rebuttal_cfg["propensity_max"]),
     )
+    normal_assignment_uniforms = _seeded_uniforms(normal.index, seed)
+    anomaly_assignment_uniforms = _seeded_uniforms(anomaly.index, seed + 10_000)
+    normal_test_priority = _seeded_uniforms(normal.index, seed + 20_000)
+    anomaly_test_priority = _seeded_uniforms(anomaly.index, seed + 30_000)
+
     normal_sample = rejection_sample(
         normal,
         feature_columns,
         propensity_model,
         seed=seed,
+        uniforms=normal_assignment_uniforms,
     )
     normal_train = normal_sample.rejected
     normal_test = normal_sample.accepted
@@ -217,6 +248,7 @@ def process_shift_seed(
         propensity_model,
         train_split,
         seed,
+        assignment_uniforms=anomaly_assignment_uniforms,
     )
 
     if len(normal_train) < 2 or len(normal_test) < 1 or len(anomaly_test) < 1:
@@ -240,8 +272,16 @@ def process_shift_seed(
     if n_normal_test < 1 or n_anomalies_test < 1:
         return None
 
-    normal_test_sampled = normal_test.sample(n=n_normal_test, random_state=seed)
-    anomaly_test_sampled = anomaly_test.sample(n=n_anomalies_test, random_state=seed)
+    normal_test_sampled = _sample_by_priority(
+        normal_test,
+        n_normal_test,
+        normal_test_priority,
+    )
+    anomaly_test_sampled = _sample_by_priority(
+        anomaly_test,
+        n_anomalies_test,
+        anomaly_test_priority,
+    )
 
     train_propensity = normal_sample.rejected_propensity.loc[normal_train.index]
     normal_test_propensity = normal_sample.accepted_propensity.loc[
@@ -515,4 +555,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
