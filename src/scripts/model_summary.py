@@ -6,6 +6,9 @@ from pathlib import Path
 import pandas as pd
 
 
+METRIC_COLUMNS = ["prauc", "rocauc", "brier"]
+
+
 def load_and_validate_csv(file_path: Path) -> pd.DataFrame:
     """Load CSV and validate expected columns."""
     expected_cols = [
@@ -25,12 +28,19 @@ def load_and_validate_csv(file_path: Path) -> pd.DataFrame:
     if missing:
         raise ValueError(f"Missing columns in {file_path}: {missing}")
 
+    for col in METRIC_COLUMNS:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+        if df[col].isna().any():
+            raise ValueError(f"Found non-numeric values in column '{col}' in {file_path}")
+
+    if df["is_best"].dtype != bool:
+        df["is_best"] = df["is_best"].astype(str).str.lower().eq("true")
+
     return df
 
 
 def compute_model_summary(df: pd.DataFrame, metric: str = "rocauc") -> pd.DataFrame:
     """Compute summary statistics per model."""
-    # Group by model and compute stats
     summary = (
         df.groupby("model")
         .agg(
@@ -46,17 +56,24 @@ def compute_model_summary(df: pd.DataFrame, metric: str = "rocauc") -> pd.DataFr
         .reset_index()
     )
 
-    # Sort by chosen metric (descending for rocauc/prauc, ascending for brier)
     ascending = metric == "brier"
     sort_col = f"{metric}_mean"
-    summary = summary.sort_values(sort_col, ascending=ascending)
+    summary = summary.sort_values(
+        [sort_col, "model"],
+        ascending=[ascending, True],
+        kind="mergesort",
+    )
 
     return summary
 
 
+def _normalize_std(std: float) -> float:
+    return 0.0 if pd.isna(std) else float(std)
+
+
 def format_metric(mean: float, std: float, precision: int = 4) -> str:
     """Format metric as mean +/- std."""
-    return f"{mean:.{precision}f} +/- {std:.{precision}f}"
+    return f"{mean:.{precision}f} +/- {_normalize_std(std):.{precision}f}"
 
 
 def print_summary_table(summary: pd.DataFrame, dataset_name: str) -> None:
@@ -88,10 +105,13 @@ def print_csv_output(summary: pd.DataFrame, dataset_name: str) -> None:
         "model,rocauc_mean,rocauc_std,prauc_mean,prauc_std,brier_mean,brier_std,wins,total"
     )
     for _, row in summary.iterrows():
+        rocauc_std = _normalize_std(row["rocauc_std"])
+        prauc_std = _normalize_std(row["prauc_std"])
+        brier_std = _normalize_std(row["brier_std"])
         print(
-            f"{row['model']},{row['rocauc_mean']:.4f},{row['rocauc_std']:.4f},"
-            f"{row['prauc_mean']:.4f},{row['prauc_std']:.4f},"
-            f"{row['brier_mean']:.4f},{row['brier_std']:.4f},"
+            f"{row['model']},{row['rocauc_mean']:.4f},{rocauc_std:.4f},"
+            f"{row['prauc_mean']:.4f},{prauc_std:.4f},"
+            f"{row['brier_mean']:.4f},{brier_std:.4f},"
             f"{int(row['wins'])},{int(row['total'])}"
         )
 
@@ -115,9 +135,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m code.scripts.model_summary outputs/model_selection/breast.csv
-  python -m code.scripts.model_summary outputs/model_selection/*.csv --metric prauc
-  python -m code.scripts.model_summary outputs/model_selection/breast.csv --format csv
+  python -m src.scripts.model_summary outputs/model_selection/breastw.csv
+  python -m src.scripts.model_summary outputs/model_selection/*.csv --metric prauc
+  python -m src.scripts.model_summary outputs/model_selection/breastw.csv --format csv
         """,
     )
 

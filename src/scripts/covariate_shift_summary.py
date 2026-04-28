@@ -18,7 +18,7 @@ APPROACH_ORDER_MAP = {name: idx for idx, name in enumerate(APPROACH_ORDER)}
 
 
 def load_and_validate_csv(file_path: Path) -> pd.DataFrame:
-    """Load a rebuttal covariate-shift result CSV."""
+    """Load a covariate-shift experiment result CSV."""
     expected_cols = [
         "seed",
         "dataset",
@@ -178,13 +178,13 @@ def expand_files(files: list[Path]) -> list[Path]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Summarize rebuttal covariate-shift experiment results by severity.",
+        description="Summarize covariate-shift experiment results by severity.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python -m src.rebuttal.scripts.covariate_summary outputs/rebuttal_covariate_shift/wbc.csv
-  python -m src.rebuttal.scripts.covariate_summary outputs/rebuttal_covariate_shift/*.csv
-  python -m src.rebuttal.scripts.covariate_summary outputs/rebuttal_covariate_shift/*.csv --format csv
+  python -m src.scripts.covariate_shift_summary outputs/experiment_results/wbc.csv
+  python -m src.scripts.covariate_shift_summary outputs/experiment_results/*.csv
+  python -m src.scripts.covariate_shift_summary outputs/experiment_results/*.csv --format csv
         """,
     )
     parser.add_argument("files", nargs="+", type=Path, help="CSV file(s) to summarize")
@@ -219,4 +219,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-

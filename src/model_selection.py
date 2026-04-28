@@ -25,12 +25,12 @@ def process_seed_phase1(
     """Process a single seed for Phase 1: Model Selection."""
     normal_train, _ = train_test_split(
         normal,
-        train_size=cfg["global"]["train_split"],
+        train_size=cfg["splits"]["train_split"],
         random_state=seed,
     )
     anomaly_train, _ = train_test_split(
         anomaly,
-        train_size=cfg["global"]["train_split"],
+        train_size=cfg["splits"]["train_split"],
         random_state=seed,
     )
 
@@ -39,7 +39,7 @@ def process_seed_phase1(
 
     for model_name in models:
         kf = KFold(
-            n_splits=cfg["global"]["selection_folds"],
+            n_splits=cfg["model_selection"]["folds"],
             shuffle=True,
             random_state=seed,
         )
@@ -152,7 +152,7 @@ def run_model_selection(
     logger,
 ) -> None:
     """Run model selection for datasets missing final selection CSVs."""
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     for ds_name in datasets:
         csv_path = output_dir / f"{ds_name}.csv"
@@ -168,7 +168,7 @@ def run_model_selection(
         anomaly = data[data["Class"] == 1]
 
         empirical_anomaly_rate = len(anomaly) / len(data)
-        models = cfg["experiments"]["models"]
+        models = cfg["model_selection"]["models"]
         models = models if isinstance(models, list) else [models]
 
         tasks = [

@@ -6,33 +6,48 @@ from unittest import mock
 import numpy as np
 import pandas as pd
 
+import src.experiment as experiment
 import src.model_selection as model_selection
-import src.rebuttal.covariate_shift_experiment as covariate_shift_experiment
 
 
 def _cfg(meta_seeds=2):
     return {
-        "global": {
+        "experiment": {
             "meta_seeds": meta_seeds,
+            "datasets": ["demo"],
+            "severities": [0.0],
+            "output_dir": "outputs/experiment_results",
+        },
+        "model_selection": {
+            "models": ["linear"],
+            "folds": 3,
+            "output_dir": "outputs/model_selection",
+        },
+        "splits": {
             "train_split": 0.75,
-            "selection_folds": 3,
+            "test_use_proportion": 0.5,
+            "test_anomaly_rate": 0.2,
+        },
+        "conformal": {
             "fdr_rate": 0.1,
             "n_bootstraps": 2,
             "n_trials": 2,
-            "test_use_proportion": 0.5,
-            "test_anomaly_rate": 0.2,
-            "approaches": ["empirical"],
             "pruning": "homogeneous",
         },
-        "experiments": {
-            "datasets": ["demo"],
-            "models": ["linear"],
+        "weighting": {
+            "mode": "oracle",
+            "estimator": "forest",
         },
-        "rebuttal_covariate_shift": {
-            "severities": [0.0],
+        "covariate_shift": {
             "propensity_min": 0.3,
             "propensity_max": 0.7,
-            "weight_mode": "oracle",
+        },
+        "methods": {
+            "approaches": ["empirical"],
+        },
+        "plots": {
+            "output_dir": "outputs/experiment_plots",
+            "bins": 10,
         },
     }
 
@@ -226,32 +241,32 @@ class SharedModelSelectionTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
-            output_dir = repo_root / "outputs" / "rebuttal"
+            output_dir = repo_root / "outputs" / "experiment_results"
 
             with (
-                mock.patch.object(covariate_shift_experiment, "REPO_ROOT", repo_root),
+                mock.patch.object(experiment, "REPO_ROOT", repo_root),
                 mock.patch.object(
-                    covariate_shift_experiment,
+                    experiment,
                     "run_model_selection",
                     side_effect=write_selection_csv,
                 ),
                 mock.patch.object(
-                    covariate_shift_experiment,
+                    experiment,
                     "get_dataset_enum",
                     return_value="demo",
                 ),
                 mock.patch.object(
-                    covariate_shift_experiment,
+                    experiment,
                     "load",
                     return_value=_dataframe(),
                 ),
                 mock.patch.object(
-                    covariate_shift_experiment,
+                    experiment,
                     "process_shift_seed",
                     side_effect=fake_process_shift_seed,
                 ),
             ):
-                covariate_shift_experiment.run_experiment(
+                experiment.run_experiment(
                     cfg=_cfg(meta_seeds=3),
                     datasets=["demo"],
                     seeds=[1],
@@ -265,6 +280,204 @@ class SharedModelSelectionTest(unittest.TestCase):
             self.assertEqual(calls, [{"datasets": ["demo"], "seeds": [1, 2, 3], "jobs": 1}])
             results = pd.read_csv(output_dir / "demo.csv")
             self.assertEqual(results["seed"].tolist(), [1])
+
+    def test_covariate_shift_filters_unweighted_methods_to_zero_severity(self):
+        captured = []
+
+        def write_selection_csv(cfg, datasets, seeds, output_dir, jobs, logger):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            pd.DataFrame(
+                [
+                    {
+                        "seed": 1,
+                        "dataset": datasets[0],
+                        "model": "linear",
+                        "fold": "mean",
+                        "prauc": 1.0,
+                        "rocauc": 1.0,
+                        "brier": 0.0,
+                        "is_best": True,
+                    }
+                ]
+            ).to_csv(output_dir / f"{datasets[0]}.csv", index=False)
+
+        def fake_process_shift_seed(
+            seed,
+            severity,
+            model_name,
+            ds_name,
+            normal,
+            anomaly,
+            cfg,
+            approaches_to_run,
+            pruning_method,
+        ):
+            captured.append((severity, list(approaches_to_run)))
+            return [
+                {
+                    "seed": seed,
+                    "dataset": ds_name,
+                    "model": model_name,
+                    "approach": approach,
+                    "severity": severity,
+                    "train_size": 1,
+                    "test_size": 1,
+                    "fdr": 0.0,
+                    "power": 1.0,
+                }
+                for approach in approaches_to_run
+            ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            output_dir = repo_root / "outputs" / "experiment_results"
+
+            with (
+                mock.patch.object(experiment, "REPO_ROOT", repo_root),
+                mock.patch.object(
+                    experiment,
+                    "run_model_selection",
+                    side_effect=write_selection_csv,
+                ),
+                mock.patch.object(experiment, "get_dataset_enum", return_value="demo"),
+                mock.patch.object(experiment, "load", return_value=_dataframe()),
+                mock.patch.object(
+                    experiment,
+                    "process_shift_seed",
+                    side_effect=fake_process_shift_seed,
+                ),
+            ):
+                experiment.run_experiment(
+                    cfg=_cfg(meta_seeds=1),
+                    datasets=["demo"],
+                    seeds=[1],
+                    severities=[0.0, 1.0],
+                    approaches_to_run=[
+                        "empirical",
+                        "empirical_randomized",
+                        "probabilistic",
+                        "empirical_weighted",
+                    ],
+                    output_dir=output_dir,
+                    force=False,
+                    jobs=1,
+                )
+
+        self.assertEqual(
+            captured,
+            [
+                (
+                    0.0,
+                    [
+                        "empirical",
+                        "empirical_randomized",
+                        "probabilistic",
+                        "empirical_weighted",
+                    ],
+                ),
+                (1.0, ["empirical_weighted"]),
+            ],
+        )
+
+    def test_covariate_shift_skips_nonzero_severity_when_only_unweighted_methods_apply(self):
+        process_shift_seed = mock.Mock()
+
+        def write_selection_csv(cfg, datasets, seeds, output_dir, jobs, logger):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            pd.DataFrame(
+                [
+                    {
+                        "seed": 1,
+                        "dataset": datasets[0],
+                        "model": "linear",
+                        "fold": "mean",
+                        "prauc": 1.0,
+                        "rocauc": 1.0,
+                        "brier": 0.0,
+                        "is_best": True,
+                    }
+                ]
+            ).to_csv(output_dir / f"{datasets[0]}.csv", index=False)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            output_dir = repo_root / "outputs" / "experiment_results"
+
+            with (
+                mock.patch.object(experiment, "REPO_ROOT", repo_root),
+                mock.patch.object(
+                    experiment,
+                    "run_model_selection",
+                    side_effect=write_selection_csv,
+                ),
+                mock.patch.object(experiment, "get_dataset_enum", return_value="demo"),
+                mock.patch.object(experiment, "load", return_value=_dataframe()),
+                mock.patch.object(
+                    experiment,
+                    "process_shift_seed",
+                    side_effect=process_shift_seed,
+                ),
+            ):
+                experiment.run_experiment(
+                    cfg=_cfg(meta_seeds=1),
+                    datasets=["demo"],
+                    seeds=[1],
+                    severities=[1.0],
+                    approaches_to_run=["empirical"],
+                    output_dir=output_dir,
+                    force=False,
+                    jobs=1,
+                )
+
+            process_shift_seed.assert_not_called()
+            self.assertFalse((output_dir / "demo.csv").exists())
+
+    def test_covariate_shift_config_snapshot_preserves_without_force(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            config_path = tmp_path / "config.toml"
+            output_dir = tmp_path / "outputs"
+            config_path.write_text("version = 1\n", encoding="utf-8")
+
+            experiment.run_experiment(
+                cfg=_cfg(),
+                datasets=[],
+                seeds=[1],
+                severities=[0.0],
+                approaches_to_run=["empirical_weighted"],
+                output_dir=output_dir,
+                force=False,
+                jobs=1,
+                config_path=config_path,
+            )
+            self.assertEqual((output_dir / "config.toml").read_text(), "version = 1\n")
+
+            config_path.write_text("version = 2\n", encoding="utf-8")
+            experiment.run_experiment(
+                cfg=_cfg(),
+                datasets=[],
+                seeds=[1],
+                severities=[0.0],
+                approaches_to_run=["empirical_weighted"],
+                output_dir=output_dir,
+                force=False,
+                jobs=1,
+                config_path=config_path,
+            )
+            self.assertEqual((output_dir / "config.toml").read_text(), "version = 1\n")
+
+            experiment.run_experiment(
+                cfg=_cfg(),
+                datasets=[],
+                seeds=[1],
+                severities=[0.0],
+                approaches_to_run=["empirical_weighted"],
+                output_dir=output_dir,
+                force=True,
+                jobs=1,
+                config_path=config_path,
+            )
+            self.assertEqual((output_dir / "config.toml").read_text(), "version = 2\n")
 
 
 if __name__ == "__main__":

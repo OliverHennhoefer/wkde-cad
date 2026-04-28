@@ -1,146 +1,110 @@
+from __future__ import annotations
+
+import argparse
 import logging
 import multiprocessing as mp
+import shutil
 import tomllib
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
+from nonconform import ConformalDetector, Empirical, JackknifeBootstrap, Probabilistic
+from nonconform.fdr import Pruning, weighted_false_discovery_control
+from nonconform.metrics import false_discovery_rate, statistical_power
 from scipy.stats import false_discovery_control
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from src.utils.data_loader import load
-from nonconform import (
-    ConformalDetector,
-    JackknifeBootstrap,
-    Probabilistic,
-    Empirical,
+
+from src.covariate_shift import (
+    FixedWeightEstimator,
+    fit_propensity_model,
+    rejection_sample,
+    weight_summary,
 )
-from nonconform.metrics import false_discovery_rate, statistical_power
-from nonconform.fdr import weighted_false_discovery_control, Pruning
 from src.model_selection import run_model_selection
-from src.utils.registry import get_dataset_enum, get_model_instance
+from src.utils.data_loader import load
 from src.utils.logger import get_logger
+from src.utils.registry import get_dataset_enum, get_model_instance
 from src.utils.weight_estimators import build_weight_estimator
+
 
 logging.getLogger("nonconform").setLevel(logging.CRITICAL)
 
-# Auto-detect CPU count: use max 2 cores locally, scale up on servers
 N_JOBS = min(mp.cpu_count(), 2) if mp.cpu_count() <= 4 else max(1, mp.cpu_count() - 2)
-
-####################################################################################################################
-# Setup
-####################################################################################################################
-
-logger = get_logger()
-
-# Load configuration
-repo_root = Path(__file__).resolve().parent.parent
-config_path = Path(__file__).resolve().parent / "config.toml"
-with open(config_path, "rb") as f:
-    cfg = tomllib.load(f)
-
-datasets = cfg["experiments"]["datasets"]
-datasets = datasets if isinstance(datasets, list) else [datasets]
-
-seed_config = cfg["global"].get("meta_seeds")
-if seed_config is None:
-    raise ValueError(
-        "Please provide 'meta_seeds' as an integer count in config."
-    )
-if not isinstance(seed_config, int) or isinstance(seed_config, bool):
-    raise ValueError(
-        "meta_seeds must be an integer count (e.g., 20 for seeds 1..20)."
-    )
-if seed_config < 1:
-    raise ValueError("meta_seeds must be >= 1.")
-
-seeds = list(range(1, seed_config + 1))
-pruning_choice = str(cfg["global"].get("pruning", "heterogeneous")).strip().lower()
-pruning_method = {
-    "deterministic": Pruning.DETERMINISTIC,
-    "homogeneous": Pruning.HOMOGENEOUS,
-    "heterogeneous": Pruning.HETEROGENEOUS,
-}[pruning_choice]
-
-####################################################################################################################
-# Function Definitions
-####################################################################################################################
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_CONFIG = REPO_ROOT / "config.toml"
+UNWEIGHTED_APPROACHES = {
+    "empirical",
+    "empirical_randomized",
+    "probabilistic",
+}
+WEIGHTED_APPROACHES = {
+    "empirical_weighted",
+    "empirical_randomized_weighted",
+    "probabilistic_weighted",
+}
 
 
-def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rate,
-                        n_bootstraps, n_trials, test_use_proportion, test_anomaly_rate,
-                        approaches_to_run, results_dir):
-    """Process a single seed for Phase 2: Experimentation."""
-    normal_train, normal_test = train_test_split(
-        normal,
-        train_size=cfg["global"]["train_split"],
-        random_state=seed,
-    )
-    _, anomaly_test = train_test_split(
-        anomaly,
-        train_size=cfg["global"]["train_split"],
-        random_state=seed,
-    )
+def _as_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
 
-    # Use all training data
-    X_train = normal_train.drop(columns=["Class"]).values
-    scaler = StandardScaler()
-    x_train_scaled = scaler.fit_transform(X_train)
-    train_size = len(x_train_scaled)
 
-    # Compute test set sizes from configuration
-    total_test_available = len(normal_test) + len(anomaly_test)
-    test_size = round(test_use_proportion * total_test_available)
-    n_anomalies_test = round(test_size * test_anomaly_rate)
-    n_normal_test = test_size - n_anomalies_test
+def _seed_list(seed_count: int) -> list[int]:
+    if not isinstance(seed_count, int) or isinstance(seed_count, bool) or seed_count < 1:
+        raise ValueError("experiment.meta_seeds must be a positive integer count.")
+    return list(range(1, seed_count + 1))
 
-    # Ensure at least 1 anomaly
-    if n_anomalies_test < 1:
-        n_anomalies_test = 1
-        n_normal_test = test_size - 1
 
-    # Cap anomalies to available amount (use all if not enough)
-    if n_anomalies_test > len(anomaly_test):
-        n_anomalies_test = len(anomaly_test)
-        # Recalculate normal samples to maintain test_size
-        n_normal_test = test_size - n_anomalies_test
+def _pruning_method(name: str) -> Pruning:
+    pruning_choice = str(name).strip().lower()
+    return {
+        "deterministic": Pruning.DETERMINISTIC,
+        "homogeneous": Pruning.HOMOGENEOUS,
+        "heterogeneous": Pruning.HETEROGENEOUS,
+    }[pruning_choice]
 
-    # Cap normal samples to available amount
-    if n_normal_test > len(normal_test):
-        n_normal_test = len(normal_test)
 
-    # Validate we have at least 1 of each
-    if n_normal_test < 1 or n_anomalies_test < 1:
-        return None  # Skip this seed
+def _build_estimated_weight_estimator(weight_choice: str, n_bootstraps: int):
+    return build_weight_estimator(weight_choice, n_bootstraps)
 
-    # Sample test data with computed sizes
-    normal_test_sampled = normal_test.sample(n=n_normal_test, random_state=seed)
-    anomaly_test_sampled = anomaly_test.sample(
-        n=n_anomalies_test, random_state=seed
-    )
 
-    X_test = (
-        pd.concat([normal_test_sampled, anomaly_test_sampled])
-        .drop(columns=["Class"])
-        .values
-    )
-    y_test = np.concatenate(
-        [
-            np.zeros(len(normal_test_sampled)),
-            np.ones(len(anomaly_test_sampled)),
-        ]
-    )
-    x_test_scaled = scaler.transform(X_test)
+def _make_weight_estimator(
+    weight_mode: str,
+    train_weights: np.ndarray,
+    test_weights: np.ndarray,
+    cfg: dict[str, Any],
+):
+    if weight_mode == "oracle":
+        return FixedWeightEstimator(train_weights, test_weights)
+    if weight_mode == "estimated":
+        return _build_estimated_weight_estimator(
+            cfg["weighting"].get("estimator", "forest"),
+            cfg["conformal"]["n_bootstraps"],
+        )
+    raise ValueError("weighting.mode must be 'oracle' or 'estimated'.")
 
-    actual_anomaly_rate = n_anomalies_test / test_size
 
-    weight_estimator = build_weight_estimator(
-        cfg["global"].get("weight_estimator", "forest"),
-        n_bootstraps,
-    )
+def _experiment_cfg(cfg: dict[str, Any]) -> dict[str, Any]:
+    experiment_cfg = cfg.get("experiment")
+    if experiment_cfg is None:
+        raise ValueError("Missing [experiment] section in config.")
+    return experiment_cfg
 
-    # Define all four approaches
-    all_approaches = {
+
+def _build_approaches(
+    *,
+    cfg: dict[str, Any],
+    weight_mode: str,
+    train_weights: np.ndarray,
+    test_weights: np.ndarray,
+) -> dict[str, dict[str, Any]]:
+    n_bootstraps = cfg["conformal"]["n_bootstraps"]
+    n_trials = cfg["conformal"]["n_trials"]
+    return {
         "empirical": {
             "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
             "estimation": Empirical(tie_break="classical"),
@@ -162,31 +126,232 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
         "empirical_weighted": {
             "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
             "estimation": Empirical(tie_break="classical"),
-            "weight_estimator": weight_estimator,
+            "weight_estimator": _make_weight_estimator(
+                weight_mode, train_weights, test_weights, cfg
+            ),
             "weighted": True,
         },
         "empirical_randomized_weighted": {
             "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
             "estimation": Empirical(tie_break="randomized"),
-            "weight_estimator": weight_estimator,
+            "weight_estimator": _make_weight_estimator(
+                weight_mode, train_weights, test_weights, cfg
+            ),
             "weighted": True,
         },
         "probabilistic_weighted": {
             "strategy": JackknifeBootstrap(n_bootstraps=n_bootstraps),
             "estimation": Probabilistic(n_trials=n_trials),
-            "weight_estimator": weight_estimator,
+            "weight_estimator": _make_weight_estimator(
+                weight_mode, train_weights, test_weights, cfg
+            ),
             "weighted": True,
         },
     }
 
-    # Filter to only configured approaches
-    approaches = {
-        k: v for k, v in all_approaches.items() if k in approaches_to_run
+
+def _seeded_uniforms(index: pd.Index, seed: int) -> pd.Series:
+    return pd.Series(np.random.default_rng(seed).random(len(index)), index=index)
+
+
+def _sample_by_priority(
+    data: pd.DataFrame,
+    n: int,
+    priority: pd.Series,
+) -> pd.DataFrame:
+    if n > len(data):
+        raise ValueError("Cannot sample more rows than are available.")
+    if n == len(data):
+        return data.copy()
+
+    selected_index = (
+        priority.loc[data.index]
+        .sort_values(kind="mergesort")
+        .head(n)
+        .index
+    )
+    return data.loc[selected_index].copy()
+
+
+def _split_anomaly_candidates(
+    anomaly: pd.DataFrame,
+    feature_columns: list[str],
+    propensity_model,
+    train_split: float,
+    seed: int,
+    assignment_uniforms: pd.Series | None = None,
+) -> tuple[pd.DataFrame, pd.Series]:
+    if len(anomaly) < 2:
+        return anomaly.copy(), pd.Series(
+            propensity_model.propensity(anomaly[feature_columns]),
+            index=anomaly.index,
+        )
+
+    sampled = rejection_sample(
+        anomaly,
+        feature_columns,
+        propensity_model,
+        seed=seed + 10_000,
+        uniforms=assignment_uniforms,
+    )
+    if len(sampled.accepted) > 0:
+        return sampled.accepted, sampled.accepted_propensity
+
+    _, fallback = train_test_split(
+        anomaly,
+        train_size=train_split,
+        random_state=seed,
+    )
+    fallback_propensity = pd.Series(
+        propensity_model.propensity(fallback[feature_columns]),
+        index=fallback.index,
+        name="test_propensity",
+    )
+    return fallback.copy(), fallback_propensity
+
+
+def process_shift_seed(
+    seed: int,
+    severity: float,
+    model_name: str,
+    ds_name: str,
+    normal: pd.DataFrame,
+    anomaly: pd.DataFrame,
+    cfg: dict[str, Any],
+    approaches_to_run: list[str],
+    pruning_method: Pruning,
+) -> list[dict[str, Any]] | None:
+    feature_columns = [col for col in normal.columns if col != "Class"]
+    shift_cfg = cfg["covariate_shift"]
+    train_split = cfg["splits"]["train_split"]
+    test_use_proportion = cfg["splits"]["test_use_proportion"]
+    test_anomaly_rate = cfg["splits"]["test_anomaly_rate"]
+    weight_mode = str(cfg["weighting"].get("mode", "oracle")).strip().lower()
+
+    propensity_model = fit_propensity_model(
+        normal[feature_columns],
+        train_split=train_split,
+        severity=severity,
+        propensity_min=float(shift_cfg["propensity_min"]),
+        propensity_max=float(shift_cfg["propensity_max"]),
+    )
+    normal_assignment_uniforms = _seeded_uniforms(normal.index, seed)
+    anomaly_assignment_uniforms = _seeded_uniforms(anomaly.index, seed + 10_000)
+    normal_test_priority = _seeded_uniforms(normal.index, seed + 20_000)
+    anomaly_test_priority = _seeded_uniforms(anomaly.index, seed + 30_000)
+
+    normal_sample = rejection_sample(
+        normal,
+        feature_columns,
+        propensity_model,
+        seed=seed,
+        uniforms=normal_assignment_uniforms,
+    )
+    normal_train = normal_sample.rejected
+    normal_test = normal_sample.accepted
+
+    anomaly_test, anomaly_test_propensity = _split_anomaly_candidates(
+        anomaly,
+        feature_columns,
+        propensity_model,
+        train_split,
+        seed,
+        assignment_uniforms=anomaly_assignment_uniforms,
+    )
+
+    if len(normal_train) < 2 or len(normal_test) < 1 or len(anomaly_test) < 1:
+        return None
+
+    total_test_available = len(normal_test) + len(anomaly_test)
+    target_test_size = round(test_use_proportion * total_test_available)
+    if target_test_size < 2:
+        return None
+
+    n_anomalies_test = round(target_test_size * test_anomaly_rate)
+    n_normal_test = target_test_size - n_anomalies_test
+    if n_anomalies_test < 1:
+        n_anomalies_test = 1
+        n_normal_test = target_test_size - 1
+    if n_anomalies_test > len(anomaly_test):
+        n_anomalies_test = len(anomaly_test)
+        n_normal_test = target_test_size - n_anomalies_test
+    if n_normal_test > len(normal_test):
+        n_normal_test = len(normal_test)
+    if n_normal_test < 1 or n_anomalies_test < 1:
+        return None
+
+    normal_test_sampled = _sample_by_priority(
+        normal_test,
+        n_normal_test,
+        normal_test_priority,
+    )
+    anomaly_test_sampled = _sample_by_priority(
+        anomaly_test,
+        n_anomalies_test,
+        anomaly_test_priority,
+    )
+
+    train_propensity = normal_sample.rejected_propensity.loc[normal_train.index]
+    normal_test_propensity = normal_sample.accepted_propensity.loc[
+        normal_test_sampled.index
+    ]
+    sampled_anomaly_propensity = anomaly_test_propensity.loc[anomaly_test_sampled.index]
+
+    train_weights = (
+        train_propensity.to_numpy() / (1.0 - train_propensity.to_numpy())
+    )
+    test_propensity = pd.concat(
+        [normal_test_propensity, sampled_anomaly_propensity],
+        axis=0,
+    )
+    test_weights = test_propensity.to_numpy() / (1.0 - test_propensity.to_numpy())
+
+    x_train = normal_train.drop(columns=["Class"]).values
+    x_test = (
+        pd.concat([normal_test_sampled, anomaly_test_sampled])
+        .drop(columns=["Class"])
+        .values
+    )
+    y_test = np.concatenate(
+        [
+            np.zeros(len(normal_test_sampled)),
+            np.ones(len(anomaly_test_sampled)),
+        ]
+    )
+
+    scaler = StandardScaler()
+    x_train_scaled = scaler.fit_transform(x_train)
+    x_test_scaled = scaler.transform(x_test)
+    final_test_size = len(y_test)
+    actual_anomaly_rate = n_anomalies_test / final_test_size
+
+    all_approaches = _build_approaches(
+        cfg=cfg,
+        weight_mode=weight_mode,
+        train_weights=train_weights,
+        test_weights=test_weights,
+    )
+    approaches = {k: v for k, v in all_approaches.items() if k in approaches_to_run}
+
+    propensities = normal_sample.all_propensity.to_numpy()
+    base_diagnostics = {
+        "severity": severity,
+        "weight_mode": weight_mode,
+        "target_test_probability": propensity_model.target_probability,
+        "propensity_mean": float(np.mean(propensities)),
+        "propensity_std": float(np.std(propensities)),
+        "propensity_min_observed": float(np.min(propensities)),
+        "propensity_max_observed": float(np.max(propensities)),
+        "normal_test_assignment_rate": normal_sample.accepted_fraction,
+        "target_test_size": target_test_size,
+        "n_normal_rejection_pool": len(normal_train),
+        "n_normal_accepted_pool": len(normal_test),
+        "n_anomaly_accepted_pool": len(anomaly_test),
     }
+    base_diagnostics.update(weight_summary("oracle_calib", train_weights))
+    base_diagnostics.update(weight_summary("oracle_test", test_weights))
 
-    # Collect all results for this seed
     seed_results = []
-
     for approach_name, approach_config in approaches.items():
         detector_kwargs = {
             "detector": get_model_instance(model_name, random_state=seed),
@@ -196,192 +361,244 @@ def process_seed_phase2(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rat
         if approach_config["estimation"] is not None:
             detector_kwargs["estimation"] = approach_config["estimation"]
         if approach_config["weight_estimator"] is not None:
-            detector_kwargs["weight_estimator"] = approach_config[
-                "weight_estimator"
-            ]
+            detector_kwargs["weight_estimator"] = approach_config["weight_estimator"]
 
         detector = ConformalDetector(**detector_kwargs)
         detector.fit(x_train_scaled)
         p_values = detector.compute_p_values(x_test_scaled)
 
-        # Apply appropriate FDR control
         if approach_config["weighted"]:
             decisions = weighted_false_discovery_control(
-                detector.last_result, alpha=fdr_rate,
-                pruning=pruning_method, seed=seed
+                detector.last_result,
+                alpha=cfg["conformal"]["fdr_rate"],
+                pruning=pruning_method,
+                seed=seed,
             )
         else:
-            decisions = (
-                false_discovery_control(p_values, method="bh") <= fdr_rate
-            )
+            decisions = false_discovery_control(p_values, method="bh") <= cfg["conformal"][
+                "fdr_rate"
+            ]
 
         fdr = false_discovery_rate(y=y_test, y_hat=decisions)
         power = statistical_power(y=y_test, y_hat=decisions)
 
-        seed_results.append({
+        row = {
             "seed": seed,
             "dataset": ds_name,
             "model": model_name,
             "approach": approach_name,
-            "train_size": train_size,
-            "test_size": test_size,
+            "train_size": len(x_train_scaled),
+            "test_size": final_test_size,
             "n_train": len(x_train_scaled),
-            "n_test": test_size,
+            "n_test": final_test_size,
             "n_test_normal": n_normal_test,
             "n_test_anomaly": n_anomalies_test,
             "actual_anomaly_rate": round(actual_anomaly_rate, 3),
             "fdr": round(fdr, 3),
             "power": round(power, 3),
-        })
+        }
+        row.update(base_diagnostics)
+        if approach_config["weighted"] and detector.last_result.calib_weights is not None:
+            row.update(weight_summary("used_calib", detector.last_result.calib_weights))
+            row.update(weight_summary("used_test", detector.last_result.test_weights))
+        else:
+            row.update(weight_summary("used_calib", np.array([])))
+            row.update(weight_summary("used_test", np.array([])))
+        seed_results.append(row)
 
-    # Write all results for this seed to a seed-specific CSV
-    csv_path = results_dir / f"{ds_name}_seed{seed}.csv"
-    df = pd.DataFrame(seed_results)
-    df.to_csv(csv_path, index=False)
-
-    return seed, seed_results
+    return seed_results
 
 
-####################################################################################################################
-# Main Execution
-####################################################################################################################
+def _valid_approaches() -> set[str]:
+    return UNWEIGHTED_APPROACHES | WEIGHTED_APPROACHES
 
-if __name__ == '__main__':
-    ####################################################################################################################
-    # Phase 1: Model Selection
-    ####################################################################################################################
 
-    output_dir = repo_root / "outputs" / "model_selection"
-    run_model_selection(
-        cfg=cfg,
-        datasets=datasets,
-        seeds=seeds,
-        output_dir=output_dir,
-        jobs=N_JOBS,
-        logger=logger,
-    )
+def _approaches_for_severity(
+    approaches_to_run: list[str],
+    severity: float,
+) -> list[str]:
+    approaches = list(approaches_to_run)
+    if np.isclose(severity, 0.0):
+        return approaches
+    return [approach for approach in approaches if approach in WEIGHTED_APPROACHES]
 
-    ####################################################################################################################
-    # Phase 2: Experimentation
-    ####################################################################################################################
 
-    results_dir = repo_root / "outputs" / "experiment_results"
-    results_dir.mkdir(parents=True, exist_ok=True)
+def _copy_config_snapshot(
+    config_path: Path,
+    output_dir: Path,
+    force: bool,
+    logger,
+) -> None:
+    snapshot_path = output_dir / "config.toml"
+    if snapshot_path.exists() and not force:
+        logger.info(f"Preserving existing config snapshot at {snapshot_path}")
+        return
+    shutil.copy2(config_path, snapshot_path)
+    logger.info(f"Saved config snapshot to {snapshot_path}")
 
-    fdr_rate = cfg["global"]["fdr_rate"]
-    n_bootstraps = cfg["global"]["n_bootstraps"]
-    n_trials = cfg["global"]["n_trials"]
-    test_use_proportion = cfg["global"]["test_use_proportion"]
-    test_anomaly_rate = cfg["global"]["test_anomaly_rate"]
 
-    # Load approaches to run
-    approaches_to_run = cfg["global"]["approaches"]
-    approaches_to_run = (
-        approaches_to_run if isinstance(approaches_to_run, list) else [approaches_to_run]
-    )
+def _load_selected_models(model_selection_dir: Path, ds_name: str) -> pd.DataFrame:
+    selection_csv = model_selection_dir / f"{ds_name}.csv"
+    if not selection_csv.exists():
+        raise FileNotFoundError(selection_csv)
+    selection_df = pd.read_csv(selection_csv)
+    best_mask = selection_df["is_best"].astype(str).str.lower().eq("true")
+    return selection_df[best_mask].copy()
+
+
+def run_experiment(
+    *,
+    cfg: dict[str, Any],
+    datasets: list[str],
+    seeds: list[int],
+    severities: list[float],
+    approaches_to_run: list[str],
+    output_dir: Path,
+    force: bool,
+    jobs: int,
+    config_path: Path | None = None,
+) -> None:
+    logger = get_logger("experiment")
+    model_selection_dir = REPO_ROOT / cfg["model_selection"]["output_dir"]
+    pruning_method = _pruning_method(cfg["conformal"].get("pruning", "heterogeneous"))
+
+    invalid_approaches = set(approaches_to_run) - _valid_approaches()
+    if invalid_approaches:
+        raise ValueError(
+            f"Invalid approaches in config: {invalid_approaches}. "
+            f"Valid options are: {sorted(_valid_approaches())}"
+        )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if config_path is not None:
+        _copy_config_snapshot(config_path, output_dir, force, logger)
 
     for ds_name in datasets:
-        results_csv = results_dir / f"{ds_name}.csv"
-
-        if results_csv.exists():
-            logger.info(f"Skipping experimentation for {ds_name} (results exist)")
+        results_csv = output_dir / f"{ds_name}.csv"
+        if results_csv.exists() and not force:
+            logger.info(f"Skipping {ds_name} (results exist)")
             continue
 
-        selection_csv = output_dir / f"{ds_name}.csv"
-        if not selection_csv.exists():
+        selection_seeds = _seed_list(cfg["experiment"]["meta_seeds"])
+        run_model_selection(
+            cfg=cfg,
+            datasets=[ds_name],
+            seeds=selection_seeds,
+            output_dir=model_selection_dir,
+            jobs=jobs,
+            logger=logger,
+        )
+
+        try:
+            best_models = _load_selected_models(model_selection_dir, ds_name)
+        except FileNotFoundError:
             logger.warning(f"No model selection results for {ds_name}, skipping")
             continue
 
-        selection_df = pd.read_csv(selection_csv)
-        best_models = selection_df[selection_df["is_best"]]
+        best_models = best_models[best_models["seed"].astype(int).isin(seeds)]
+        if best_models.empty:
+            logger.warning(f"No selected models for requested seeds in {ds_name}, skipping")
+            continue
 
         dataset_enum = get_dataset_enum(ds_name)
         data = load(dataset_enum, setup=False)
-
         normal = data[data["Class"] == 0]
         anomaly = data[data["Class"] == 1]
 
-        # Validate configured approaches before processing
-        all_approaches_keys = {
-            "empirical",
-            "empirical_randomized",
-            "probabilistic",
-            "empirical_weighted",
-            "empirical_randomized_weighted",
-            "probabilistic_weighted",
-        }
-        invalid_approaches = set(approaches_to_run) - all_approaches_keys
-        if invalid_approaches:
-            raise ValueError(
-                f"Invalid approaches in config: {invalid_approaches}. "
-                f"Valid options are: {list(all_approaches_keys)}"
-            )
-
-        # Process seeds in parallel
-        seed_model_pairs = [(int(row["seed"]), row["model"]) for _, row in best_models.iterrows()]
-
-        with mp.Pool(N_JOBS) as pool:
-            results = pool.starmap(
-                process_seed_phase2,
-                [(seed, model_name, ds_name, normal, anomaly, cfg, fdr_rate,
-                  n_bootstraps, n_trials, test_use_proportion, test_anomaly_rate,
-                  approaches_to_run, results_dir)
-                 for seed, model_name in seed_model_pairs]
-            )
-
-        # Filter out None results (skipped seeds) and log results
-        results = [r for r in results if r is not None]
-        for seed_result, seed_data in results:
-            for row_data in seed_data:
-                logger.info(
-                    f"{row_data['dataset']} (seed {row_data['seed']}, {row_data['approach']}, "
-                    f"train={row_data['train_size']}, test={row_data['test_size']}, "
-                    f"anom_rate={row_data['actual_anomaly_rate']:.3f}) - "
-                    f"FDR: {row_data['fdr']:.3f}, Power: {row_data['power']:.3f}"
+        tasks = []
+        for _, row in best_models.iterrows():
+            for severity in severities:
+                severity_approaches = _approaches_for_severity(
+                    approaches_to_run,
+                    float(severity),
+                )
+                if not severity_approaches:
+                    logger.warning(
+                        f"Skipping {ds_name} seed {int(row['seed'])} "
+                        f"severity={float(severity):g}: no configured methods apply"
+                    )
+                    continue
+                tasks.append(
+                    (
+                        int(row["seed"]),
+                        float(severity),
+                        row["model"],
+                        ds_name,
+                        normal,
+                        anomaly,
+                        cfg,
+                        severity_approaches,
+                        pruning_method,
+                    )
                 )
 
-        # Merge per-seed CSV files into final dataset CSV
-        seed_csvs = [results_dir / f"{ds_name}_seed{seed}.csv" for seed, _ in seed_model_pairs]
-        dfs = [pd.read_csv(csv) for csv in seed_csvs if csv.exists()]
-        if not dfs:
-            logger.warning(f"No valid results for {ds_name}, skipping summary computation")
+        if jobs == 1:
+            raw_results = [process_shift_seed(*task) for task in tasks]
+        else:
+            with mp.Pool(jobs) as pool:
+                raw_results = pool.starmap(process_shift_seed, tasks)
+
+        rows = [row for result in raw_results if result is not None for row in result]
+        if not rows:
+            logger.warning(f"No valid shifted results for {ds_name}")
             continue
 
-        df_results = pd.concat(dfs, ignore_index=True)
+        df_results = pd.DataFrame(rows)
+        df_results = df_results.sort_values(
+            ["severity", "seed", "approach"],
+            kind="mergesort",
+        )
         df_results.to_csv(results_csv, index=False)
 
-        # Group by approach, train_size, and test_size for summary (aggregate across all models/trials)
-        group_cols = ["dataset", "approach", "train_size", "test_size"]
-        summary = (
-            df_results.groupby(group_cols)
-            .agg(
-                fdr_mean=("fdr", "mean"),
-                fdr_std=("fdr", "std"),
-                power_mean=("power", "mean"),
-                power_std=("power", "std"),
-                n_train=("n_train", "first"),
-                n_test=("n_test", "first"),
-                n_test_normal=("n_test_normal", "first"),
-                n_test_anomaly=("n_test_anomaly", "first"),
-                actual_anomaly_rate=("actual_anomaly_rate", "first"),
+        for row in rows:
+            logger.info(
+                f"{row['dataset']} (seed {row['seed']}, severity={row['severity']}, "
+                f"{row['approach']}, train={row['train_size']}, test={row['test_size']}) - "
+                f"FDR: {row['fdr']:.3f}, Power: {row['power']:.3f}"
             )
-            .reset_index()
-        )
 
-        # Format summary rows
-        summary["seed"] = "mean"
-        summary["model"] = "all_models"
-        summary["fdr"] = summary.apply(
-            lambda r: f"{r['fdr_mean']:.3f}±{r['fdr_std']:.3f}", axis=1
-        )
-        summary["power"] = summary.apply(
-            lambda r: f"{r['power_mean']:.3f}±{r['power_std']:.3f}", axis=1
-        )
 
-        # Append summary rows to the existing CSV
-        summary[df_results.columns].to_csv(results_csv, mode="a", header=False, index=False)
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run covariate-shift conformal anomaly detection experiments."
+    )
+    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--datasets", nargs="+")
+    parser.add_argument("--seeds", nargs="+", type=int)
+    parser.add_argument("--severities", nargs="+", type=float)
+    parser.add_argument("--approaches", nargs="+")
+    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--jobs", type=int, default=N_JOBS)
+    parser.add_argument("--force", action="store_true")
+    return parser.parse_args()
 
-        # Clean up temporary per-seed files
-        for csv in seed_csvs:
-            if csv.exists():
-                csv.unlink()
+
+def main() -> None:
+    args = parse_args()
+    with open(args.config, "rb") as f:
+        cfg = tomllib.load(f)
+
+    experiment_cfg = _experiment_cfg(cfg)
+
+    datasets = args.datasets or _as_list(experiment_cfg["datasets"])
+    seeds = args.seeds or _seed_list(experiment_cfg["meta_seeds"])
+    severities = args.severities or [float(v) for v in _as_list(experiment_cfg["severities"])]
+    approaches_to_run = args.approaches or _as_list(cfg["methods"]["approaches"])
+    output_dir = args.output_dir or (REPO_ROOT / experiment_cfg["output_dir"])
+    jobs = max(1, int(args.jobs))
+
+    run_experiment(
+        cfg=cfg,
+        datasets=[str(dataset) for dataset in datasets],
+        seeds=[int(seed) for seed in seeds],
+        severities=[float(severity) for severity in severities],
+        approaches_to_run=[str(approach) for approach in approaches_to_run],
+        output_dir=output_dir,
+        force=args.force,
+        jobs=jobs,
+        config_path=args.config,
+    )
+
+
+if __name__ == "__main__":
+    main()

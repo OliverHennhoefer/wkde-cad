@@ -11,7 +11,7 @@ from scipy.stats import t
 
 
 REQUIRED_COLUMNS = {"seed", "dataset", "approach", "fdr", "power"}
-DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config.toml"
+DEFAULT_CONFIG = Path(__file__).resolve().parents[2] / "config.toml"
 DEFAULT_DELTA = 0.05
 APPROACH_ORDER = [
     "empirical",
@@ -38,9 +38,9 @@ def read_default_alpha(config_path: Path = DEFAULT_CONFIG) -> float:
         cfg = tomllib.load(f)
 
     try:
-        return float(cfg["global"]["fdr_rate"])
+        return float(cfg["conformal"]["fdr_rate"])
     except KeyError as exc:
-        raise ValueError(f"Missing global.fdr_rate in {config_path}") from exc
+        raise ValueError(f"Missing conformal.fdr_rate in {config_path}") from exc
 
 
 def load_and_validate_csv(file_path: Path) -> pd.DataFrame:
@@ -470,7 +470,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--alpha",
         type=float,
-        help=f"Nominal FDR level. Defaults to global.fdr_rate in {DEFAULT_CONFIG}.",
+        help=f"Nominal FDR level. Defaults to conformal.fdr_rate in {DEFAULT_CONFIG}.",
     )
     parser.add_argument(
         "--delta",

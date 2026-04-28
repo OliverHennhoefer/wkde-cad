@@ -3,12 +3,12 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from src.rebuttal.covariate_shift import (
+from src.covariate_shift import (
     FixedWeightEstimator,
     fit_propensity_model,
     rejection_sample,
 )
-from src.rebuttal.covariate_shift_experiment import _sample_by_priority
+from src.experiment import _sample_by_priority
 
 
 def _features() -> pd.DataFrame:

@@ -50,6 +50,13 @@ def _approach_frame() -> pd.DataFrame:
 
 
 class FdrTableTest(unittest.TestCase):
+    def test_reads_default_alpha_from_conformal_config_section(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.toml"
+            config_path.write_text("[conformal]\nfdr_rate = 0.17\n", encoding="utf-8")
+
+            self.assertEqual(fdr_table.read_default_alpha(config_path), 0.17)
+
     def test_classifies_valid_when_upper_ci_is_below_alpha(self):
         summary = fdr_table.compute_summary(
             _result_frame([0.02, 0.02, 0.02]),
