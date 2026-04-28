@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 
 import numpy as np
@@ -264,12 +265,20 @@ def weight_summary(prefix: str, weights: np.ndarray) -> dict[str, float]:
     }
 
 
+def _array_signature(array: np.ndarray) -> tuple[tuple[int, ...], str, str]:
+    contiguous = np.ascontiguousarray(array)
+    digest = hashlib.blake2b(contiguous.tobytes(), digest_size=16).hexdigest()
+    return contiguous.shape, str(contiguous.dtype), digest
+
+
 class FixedWeightEstimator(BaseWeightEstimator):
     """Weight estimator that returns precomputed oracle density-ratio weights."""
 
     def __init__(self, calibration_weights: np.ndarray, test_weights: np.ndarray) -> None:
         self.calibration_weights = np.asarray(calibration_weights, dtype=float)
         self.test_weights = np.asarray(test_weights, dtype=float)
+        self._calibration_signature: tuple[tuple[int, ...], str, str] | None = None
+        self._test_signature: tuple[tuple[int, ...], str, str] | None = None
         if self.calibration_weights.ndim != 1 or self.test_weights.ndim != 1:
             raise ValueError("Fixed weights must be one-dimensional arrays.")
         if np.any(self.calibration_weights <= 0) or np.any(self.test_weights <= 0):
@@ -287,6 +296,8 @@ class FixedWeightEstimator(BaseWeightEstimator):
                 "Test sample count does not match fixed test weights: "
                 f"{len(test_samples)} != {len(self.test_weights)}."
             )
+        self._calibration_signature = _array_signature(calibration_samples)
+        self._test_signature = _array_signature(test_samples)
         self._is_fitted = True
 
     def _get_stored_weights(self) -> tuple[np.ndarray, np.ndarray]:
@@ -303,4 +314,12 @@ class FixedWeightEstimator(BaseWeightEstimator):
             )
         if len(test_samples) != len(self.test_weights):
             raise ValueError("Test sample count does not match fixed test weights.")
+        if (
+            _array_signature(calibration_samples) != self._calibration_signature
+            or _array_signature(test_samples) != self._test_signature
+        ):
+            raise ValueError(
+                "Fixed oracle weights cannot be rescored for different or reordered "
+                "calibration/test arrays."
+            )
         return self._get_stored_weights()

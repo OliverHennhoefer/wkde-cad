@@ -122,8 +122,21 @@ class CovariateShiftTest(unittest.TestCase):
             calibration_weights=np.array([1.0, 2.0, 3.0]),
             test_weights=np.array([0.5, 1.5]),
         )
+        calibration_samples = np.array(
+            [
+                [0.0, 1.0],
+                [2.0, 3.0],
+                [4.0, 5.0],
+            ]
+        )
+        test_samples = np.array(
+            [
+                [10.0, 11.0],
+                [12.0, 13.0],
+            ]
+        )
 
-        estimator.fit(np.zeros((3, 2)), np.zeros((2, 2)))
+        estimator.fit(calibration_samples, test_samples)
         calibration_weights, test_weights = estimator.get_weights()
 
         self.assertTrue(np.array_equal(calibration_weights, np.array([1.0, 2.0, 3.0])))
@@ -132,6 +145,21 @@ class CovariateShiftTest(unittest.TestCase):
         calibration_weights[0] = 99.0
         copied_calibration_weights, _ = estimator.get_weights()
         self.assertEqual(copied_calibration_weights[0], 1.0)
+
+        calibration_weights, test_weights = estimator.get_weights(
+            calibration_samples,
+            test_samples,
+        )
+        self.assertTrue(np.array_equal(calibration_weights, np.array([1.0, 2.0, 3.0])))
+        self.assertTrue(np.array_equal(test_weights, np.array([0.5, 1.5])))
+
+        with self.assertRaisesRegex(ValueError, "different or reordered"):
+            estimator.get_weights(calibration_samples[[1, 0, 2]], test_samples)
+
+        modified_test_samples = test_samples.copy()
+        modified_test_samples[0, 0] = 99.0
+        with self.assertRaisesRegex(ValueError, "different or reordered"):
+            estimator.get_weights(calibration_samples, modified_test_samples)
 
         with self.assertRaises(ValueError):
             estimator.get_weights(np.zeros((2, 2)), np.zeros((2, 2)))
