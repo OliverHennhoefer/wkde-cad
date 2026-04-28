@@ -1,11 +1,11 @@
 [global]
-meta_seeds = 25                     # Number of seeds (uses 1..25)
+meta_seeds = 25                     # Number of seeds (uses 1..n)
 train_split = 0.5                   # Data proportion for training (and calibration)
 selection_folds = 10                # Number of cross-validation folds for model selection
 fdr_rate = 0.1                      # Nominal false discovery rate for conformal detection
-n_bootstraps = 50                  # Number of bootstraps for JackknifeBootstrap strategy
+n_bootstraps = 50                   # Number of bootstraps for JackknifeBootstrap strategy
 n_trials = 25                       # Number of tuning trials for Probabilistic estimation
-weight_estimator = "logistic"  # Options: "forest", "forest_bagged", "logistic"
+weight_estimator = "logistic"       # Options: "forest", "forest_bagged", "logistic"
 pruning = "homogeneous"             # Options: "deterministic", "homogeneous", "heterogeneous"
 test_use_proportion = 0.5           # Proportion of test fold to use (0.5 = 50% of test split)
 test_anomaly_rate = 0.05            # Target anomaly rate in test set (0.05 = 5% anomalies)
@@ -32,7 +32,6 @@ datasets = [
 ]
 models = [
     "iforest",
-    "loda",
     "inne",
     "hbos"
     ]
@@ -40,8 +39,8 @@ models = [
 [rebuttal_covariate_shift]
 severities = [0.0, 0.5, 1.0, 4.0]
 weight_mode = "estimated"              # Options: "oracle", "estimated"
-propensity_min = 0.3                  # The smaller the less support
-propensity_max = 0.7                  # The larger the less support
+propensity_min = 0.3                  
+propensity_max = 0.7                  
 output_dir = "outputs/rebuttal_covariate_shift"
 plot_output_dir = "outputs/rebuttal_covariate_shift_plots"
 plot_seed = 1
