@@ -26,7 +26,11 @@ def sigmoid(values: np.ndarray | float) -> np.ndarray | float:
 
 
 def _as_2d_float_array(features: pd.DataFrame | np.ndarray) -> np.ndarray:
-    values = features.to_numpy(dtype=float) if isinstance(features, pd.DataFrame) else np.asarray(features, dtype=float)
+    values = (
+        features.to_numpy(dtype=float)
+        if isinstance(features, pd.DataFrame)
+        else np.asarray(features, dtype=float)
+    )
     if values.ndim != 2:
         raise ValueError(f"Expected a 2D feature matrix, got shape {values.shape}.")
     if values.shape[0] == 0:
@@ -274,7 +278,9 @@ def _array_signature(array: np.ndarray) -> tuple[tuple[int, ...], str, str]:
 class FixedWeightEstimator(BaseWeightEstimator):
     """Weight estimator that returns precomputed oracle density-ratio weights."""
 
-    def __init__(self, calibration_weights: np.ndarray, test_weights: np.ndarray) -> None:
+    def __init__(
+        self, calibration_weights: np.ndarray, test_weights: np.ndarray
+    ) -> None:
         self.calibration_weights = np.asarray(calibration_weights, dtype=float)
         self.test_weights = np.asarray(test_weights, dtype=float)
         self._calibration_signature: tuple[tuple[int, ...], str, str] | None = None

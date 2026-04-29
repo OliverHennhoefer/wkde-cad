@@ -54,7 +54,11 @@ def _as_list(value: Any) -> list[Any]:
 
 
 def _seed_list(seed_count: int) -> list[int]:
-    if not isinstance(seed_count, int) or isinstance(seed_count, bool) or seed_count < 1:
+    if (
+        not isinstance(seed_count, int)
+        or isinstance(seed_count, bool)
+        or seed_count < 1
+    ):
         raise ValueError("experiment.meta_seeds must be a positive integer count.")
     return list(range(1, seed_count + 1))
 
@@ -165,10 +169,7 @@ def _sample_by_priority(
         return data.copy()
 
     selected_index = (
-        priority.loc[data.index]
-        .sort_values(kind="mergesort")
-        .head(n)
-        .index
+        priority.loc[data.index].sort_values(kind="mergesort").head(n).index
     )
     return data.loc[selected_index].copy()
 
@@ -297,9 +298,7 @@ def process_shift_seed(
     ]
     sampled_anomaly_propensity = anomaly_test_propensity.loc[anomaly_test_sampled.index]
 
-    train_weights = (
-        train_propensity.to_numpy() / (1.0 - train_propensity.to_numpy())
-    )
+    train_weights = train_propensity.to_numpy() / (1.0 - train_propensity.to_numpy())
     test_propensity = pd.concat(
         [normal_test_propensity, sampled_anomaly_propensity],
         axis=0,
@@ -375,9 +374,10 @@ def process_shift_seed(
                 seed=seed,
             )
         else:
-            decisions = false_discovery_control(p_values, method="bh") <= cfg["conformal"][
-                "fdr_rate"
-            ]
+            decisions = (
+                false_discovery_control(p_values, method="bh")
+                <= cfg["conformal"]["fdr_rate"]
+            )
 
         fdr = false_discovery_rate(y=y_test, y_hat=decisions)
         power = statistical_power(y=y_test, y_hat=decisions)
@@ -398,7 +398,10 @@ def process_shift_seed(
             "power": round(power, 3),
         }
         row.update(base_diagnostics)
-        if approach_config["weighted"] and detector.last_result.calib_weights is not None:
+        if (
+            approach_config["weighted"]
+            and detector.last_result.calib_weights is not None
+        ):
             row.update(weight_summary("used_calib", detector.last_result.calib_weights))
             row.update(weight_summary("used_test", detector.last_result.test_weights))
         else:
@@ -497,7 +500,9 @@ def run_experiment(
 
         best_models = best_models[best_models["seed"].astype(int).isin(seeds)]
         if best_models.empty:
-            logger.warning(f"No selected models for requested seeds in {ds_name}, skipping")
+            logger.warning(
+                f"No selected models for requested seeds in {ds_name}, skipping"
+            )
             continue
 
         dataset_enum = get_dataset_enum(ds_name)
@@ -582,7 +587,9 @@ def main() -> None:
 
     datasets = args.datasets or _as_list(experiment_cfg["datasets"])
     seeds = args.seeds or _seed_list(experiment_cfg["meta_seeds"])
-    severities = args.severities or [float(v) for v in _as_list(experiment_cfg["severities"])]
+    severities = args.severities or [
+        float(v) for v in _as_list(experiment_cfg["severities"])
+    ]
     approaches_to_run = args.approaches or _as_list(cfg["methods"]["approaches"])
     output_dir = args.output_dir or (REPO_ROOT / experiment_cfg["output_dir"])
     jobs = max(1, int(args.jobs))

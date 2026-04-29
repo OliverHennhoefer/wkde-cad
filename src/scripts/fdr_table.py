@@ -54,7 +54,9 @@ def load_and_validate_csv(file_path: Path) -> pd.DataFrame:
     for col in ("fdr", "power"):
         df[col] = pd.to_numeric(df[col], errors="coerce")
         if df[col].isna().any():
-            raise ValueError(f"Found non-numeric values in column '{col}' in {file_path}")
+            raise ValueError(
+                f"Found non-numeric values in column '{col}' in {file_path}"
+            )
 
     if "severity" in df.columns:
         numeric_severity = pd.to_numeric(df["severity"], errors="coerce")
@@ -67,7 +69,9 @@ def load_and_validate_csv(file_path: Path) -> pd.DataFrame:
 def load_output_folder(output_folder: Path) -> pd.DataFrame:
     """Load every CSV in an output folder."""
     if not output_folder.is_dir():
-        raise ValueError(f"Output folder does not exist or is not a directory: {output_folder}")
+        raise ValueError(
+            f"Output folder does not exist or is not a directory: {output_folder}"
+        )
 
     csv_files = sorted(output_folder.glob("*.csv"))
     if not csv_files:
@@ -149,9 +153,7 @@ def compute_summary(
 
         if n_trials >= 2:
             half_width = (
-                float(t.ppf(1.0 - delta, n_trials - 1))
-                * fdr_std
-                / math.sqrt(n_trials)
+                float(t.ppf(1.0 - delta, n_trials - 1)) * fdr_std / math.sqrt(n_trials)
             )
             ci_lower = fdr_mean - half_width
             ci_upper = fdr_mean + half_width
@@ -257,9 +259,13 @@ def build_display_rows(
         values = []
         for col, _ in columns:
             if col == "fdr":
-                values.append(_format_mean_std(row["fdr_mean"], row["fdr_std"], precision))
+                values.append(
+                    _format_mean_std(row["fdr_mean"], row["fdr_std"], precision)
+                )
             elif col == "power":
-                values.append(_format_mean_std(row["power_mean"], row["power_std"], precision))
+                values.append(
+                    _format_mean_std(row["power_mean"], row["power_std"], precision)
+                )
             elif col == "approach":
                 values.append(_method_label(row[col]))
             elif col == "fdr_control":
@@ -398,7 +404,8 @@ def _render_latex_block(
     lines = [
         rf"\begin{{tabular}}{{{column_spec}}}",
         r"\toprule",
-        " & ".join(rf"\textbf{{{escape_latex(header)}}}" for header in headers) + r" \\",
+        " & ".join(rf"\textbf{{{escape_latex(header)}}}" for header in headers)
+        + r" \\",
         r"\midrule",
     ]
     for _, row in summary.iterrows():
@@ -410,7 +417,9 @@ def _render_latex_block(
                 )
             elif col == "power":
                 values.append(
-                    _format_latex_mean_std(row["power_mean"], row["power_std"], precision)
+                    _format_latex_mean_std(
+                        row["power_mean"], row["power_std"], precision
+                    )
                 )
             elif col == "approach":
                 values.append(escape_latex(_method_label(row[col])))
@@ -450,7 +459,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Create Markdown or LaTeX FDR-control tables from result CSV folders.",
     )
-    parser.add_argument("output_folder", type=Path, help="Folder containing result CSVs.")
+    parser.add_argument(
+        "output_folder", type=Path, help="Folder containing result CSVs."
+    )
     parser.add_argument(
         "--format",
         choices=["markdown", "latex"],

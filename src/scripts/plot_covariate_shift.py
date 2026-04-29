@@ -32,7 +32,11 @@ def _as_list(value: Any) -> list[Any]:
 
 
 def _seed_list(seed_count: int) -> list[int]:
-    if not isinstance(seed_count, int) or isinstance(seed_count, bool) or seed_count < 1:
+    if (
+        not isinstance(seed_count, int)
+        or isinstance(seed_count, bool)
+        or seed_count < 1
+    ):
         raise ValueError("experiment.meta_seeds must be a positive integer count.")
     return list(range(1, seed_count + 1))
 
@@ -57,10 +61,7 @@ def _sample_by_priority(
     if n >= len(data):
         return data.copy()
     selected_index = (
-        priority.loc[data.index]
-        .sort_values(kind="mergesort")
-        .head(n)
-        .index
+        priority.loc[data.index].sort_values(kind="mergesort").head(n).index
     )
     return data.loc[selected_index].copy()
 
@@ -362,7 +363,9 @@ def _plot_dataset(
         )
 
         empty_test_bins = int((support["test"] == 0).sum())
-        sparse_test_bins = int(((support["test"] > 0) & (support["test"] <= len(seeds))).sum())
+        sparse_test_bins = int(
+            ((support["test"] > 0) & (support["test"] <= len(seeds))).sum()
+        )
         weight_max = float(first_seed["oracle_weight"].max())
         prop_std = float(first_seed["propensity"].std())
         ax.set_title(
@@ -375,7 +378,7 @@ def _plot_dataset(
         ax.set_ylim(ylim)
         ax.legend(frameon=False, loc="best")
 
-    for ax in axes.ravel()[len(panel_data):]:
+    for ax in axes.ravel()[len(panel_data) :]:
         ax.axis("off")
 
     fig.colorbar(
@@ -403,9 +406,7 @@ def main() -> None:
     shift_cfg = cfg["covariate_shift"]
     plot_cfg = cfg["plots"]
     datasets = [str(value) for value in _as_list(experiment_cfg["datasets"])]
-    severities = [
-        float(value) for value in _as_list(experiment_cfg["severities"])
-    ]
+    severities = [float(value) for value in _as_list(experiment_cfg["severities"])]
     seeds = _seed_list(experiment_cfg["meta_seeds"])
     output_dir = Path(plot_cfg["output_dir"])
     if not output_dir.is_absolute():

@@ -31,7 +31,9 @@ def load_and_validate_csv(file_path: Path) -> pd.DataFrame:
     for col in METRIC_COLUMNS:
         df[col] = pd.to_numeric(df[col], errors="coerce")
         if df[col].isna().any():
-            raise ValueError(f"Found non-numeric values in column '{col}' in {file_path}")
+            raise ValueError(
+                f"Found non-numeric values in column '{col}' in {file_path}"
+            )
 
     if df["is_best"].dtype != bool:
         df["is_best"] = df["is_best"].astype(str).str.lower().eq("true")

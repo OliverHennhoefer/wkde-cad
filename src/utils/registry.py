@@ -5,6 +5,7 @@ from pyod.models.iforest import IForest
 from pyod.models.inne import INNE
 from pyod.models.loda import LODA
 
+
 def get_dataset_enum(dataset_name: str) -> Dataset:
     return getattr(Dataset, dataset_name.upper())
 

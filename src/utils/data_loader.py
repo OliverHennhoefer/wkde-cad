@@ -15,10 +15,7 @@ from typing import Union, Tuple
 
 
 def load(
-    dataset,
-    setup: bool = False,
-    seed: int = None,
-    **kwargs
+    dataset, setup: bool = False, seed: int = None, **kwargs
 ) -> Union[pd.DataFrame, Tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """
     Load dataset from oddball with float32 conversion for PyOD compatibility.
@@ -36,7 +33,7 @@ def load(
     if setup:
         # Load with setup=True (train/test split)
         if seed is not None:
-            kwargs['seed'] = seed
+            kwargs["seed"] = seed
 
         x_train, x_test, y_test = oddball_load(dataset, setup=True, **kwargs)
 
@@ -63,7 +60,7 @@ def load(
 
         # Convert all numeric columns except 'Class' to float32
         for col in df.columns:
-            if col != 'Class' and pd.api.types.is_numeric_dtype(df[col]):
+            if col != "Class" and pd.api.types.is_numeric_dtype(df[col]):
                 df[col] = df[col].astype(np.float32)
 
         return df

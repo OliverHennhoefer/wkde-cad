@@ -133,7 +133,9 @@ def print_table(summary: pd.DataFrame) -> None:
         for _, row in block.iterrows():
             fdr = format_metric(row["fdr_mean"], row["fdr_std"])
             power = format_metric(row["power_mean"], row["power_std"])
-            prop_range = f"{row['propensity_min_mean']:.3f}-{row['propensity_max_mean']:.3f}"
+            prop_range = (
+                f"{row['propensity_min_mean']:.3f}-{row['propensity_max_mean']:.3f}"
+            )
             max_weight = max(
                 row["oracle_calib_weight_max_mean"],
                 row["oracle_test_weight_max_mean"],

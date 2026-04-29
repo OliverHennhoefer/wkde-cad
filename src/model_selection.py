@@ -80,9 +80,7 @@ def process_seed_phase1(
 
             prauc = average_precision_score(y_test, y_scores)
             rocauc = roc_auc_score(y_test, y_scores)
-            y_probs = (y_scores - y_scores.min()) / (
-                y_scores.max() - y_scores.min()
-            )
+            y_probs = (y_scores - y_scores.min()) / (y_scores.max() - y_scores.min())
             brier = brier_score_loss(y_test, y_probs)
 
             fold_metrics.append(

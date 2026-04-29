@@ -156,7 +156,10 @@ class SharedModelSelectionTest(unittest.TestCase):
             self.assertFalse((output_dir / "demo_seed1.csv").exists())
 
     def test_selection_worker_is_deterministic_for_same_seed_and_inputs(self):
-        with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
+        with (
+            tempfile.TemporaryDirectory() as tmp1,
+            tempfile.TemporaryDirectory() as tmp2,
+        ):
             kwargs = {
                 "seed": 7,
                 "ds_name": "demo",
@@ -277,7 +280,9 @@ class SharedModelSelectionTest(unittest.TestCase):
                     jobs=1,
                 )
 
-            self.assertEqual(calls, [{"datasets": ["demo"], "seeds": [1, 2, 3], "jobs": 1}])
+            self.assertEqual(
+                calls, [{"datasets": ["demo"], "seeds": [1, 2, 3], "jobs": 1}]
+            )
             results = pd.read_csv(output_dir / "demo.csv")
             self.assertEqual(results["seed"].tolist(), [1])
 
@@ -379,7 +384,9 @@ class SharedModelSelectionTest(unittest.TestCase):
             ],
         )
 
-    def test_covariate_shift_skips_nonzero_severity_when_only_unweighted_methods_apply(self):
+    def test_covariate_shift_skips_nonzero_severity_when_only_unweighted_methods_apply(
+        self,
+    ):
         process_shift_seed = mock.Mock()
 
         def write_selection_csv(cfg, datasets, seeds, output_dir, jobs, logger):
