@@ -22,11 +22,31 @@ Existing dataset result CSVs are skipped unless `--force` is passed.
 
 ## Experiment CLI
 
+One-line form, which works in Windows PowerShell, macOS/Linux shells, and most
+terminals:
+
+```bash
+uv run python -m src.experiment --config config.toml --jobs 5
+```
+
+Multi-line form for macOS/Linux Bash or zsh:
+
 ```bash
 uv run python -m src.experiment \
   --config config.toml \
   --jobs 5
 ```
+
+Multi-line form for Windows PowerShell:
+
+```powershell
+uv run python -m src.experiment `
+  --config config.toml `
+  --jobs 5
+```
+
+The only difference is the line-continuation character: Bash/zsh uses `\`,
+while PowerShell uses a backtick.
 
 This uses the datasets, seeds, severities, methods, and output directory from
 `config.toml`.
