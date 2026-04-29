@@ -29,22 +29,6 @@ terminals:
 uv run python -m src.experiment --config config.toml --jobs 5
 ```
 
-Multi-line form for macOS/Linux Bash or zsh:
-
-```bash
-uv run python -m src.experiment \
-  --config config.toml \
-  --jobs 5
-```
-
-Multi-line form for Windows PowerShell:
-
-```powershell
-uv run python -m src.experiment `
-  --config config.toml `
-  --jobs 5
-```
-
 The only difference is the line-continuation character: Bash/zsh uses `\`,
 while PowerShell uses a backtick.
 
