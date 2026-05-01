@@ -1,0 +1,57 @@
+[experiment]
+meta_seeds = 25
+datasets = [
+    "wbc",
+    "ionosphere",
+    "wdbc",
+    "breastw",
+    "vowels",
+    "cardio",
+    "musk",
+    "satellite",
+    "mammography",
+]
+severities = [0.0, 0.5, 1.0, 4.0]
+output_dir = "outputs/experiment_results/forest"
+
+[model_selection]
+models = [
+    "iforest",
+    "inne",
+    "hbos",
+]
+folds = 10
+output_dir = "outputs/model_selection"
+
+[splits]
+train_split = 0.5
+test_use_proportion = 0.5
+test_anomaly_rate = 0.05
+
+[conformal]
+fdr_rate = 0.1
+n_bootstraps = 50
+n_trials = 25
+pruning = "homogeneous"             # Options: "deterministic", "homogeneous", "heterogeneous"
+
+[weighting]
+mode = "estimated"                  # Options: "oracle", "estimated"
+estimator = "forest"              # Options: "forest", "forest_bagged", "logistic"
+
+[covariate_shift]
+propensity_min = 0.3
+propensity_max = 0.7
+
+[methods]
+approaches = [
+    "empirical",
+    "empirical_randomized",
+    "probabilistic",
+    "empirical_weighted",
+    "empirical_randomized_weighted",
+    "probabilistic_weighted",
+]
+
+[plots]
+output_dir = "outputs/experiment_plots"
+bins = 10
