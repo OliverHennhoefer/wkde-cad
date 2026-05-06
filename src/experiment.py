@@ -366,32 +366,41 @@ def process_shift_seed(
 
     seed_results = []
     for approach_name, approach_config in approaches.items():
-        detector_kwargs = {
-            "detector": get_model_instance(model_name, random_state=seed),
-            "strategy": approach_config["strategy"],
-            "seed": seed,
-        }
-        if approach_config["estimation"] is not None:
-            detector_kwargs["estimation"] = approach_config["estimation"]
-        if approach_config["weight_estimator"] is not None:
-            detector_kwargs["weight_estimator"] = approach_config["weight_estimator"]
+        try:
+            detector_kwargs = {
+                "detector": get_model_instance(model_name, random_state=seed),
+                "strategy": approach_config["strategy"],
+                "seed": seed,
+            }
+            if approach_config["estimation"] is not None:
+                detector_kwargs["estimation"] = approach_config["estimation"]
+            if approach_config["weight_estimator"] is not None:
+                detector_kwargs["weight_estimator"] = approach_config[
+                    "weight_estimator"
+                ]
 
-        detector = ConformalDetector(**detector_kwargs)
-        detector.fit(x_train_scaled)
-        p_values = detector.compute_p_values(x_test_scaled)
+            detector = ConformalDetector(**detector_kwargs)
+            detector.fit(x_train_scaled)
+            p_values = detector.compute_p_values(x_test_scaled)
 
-        if approach_config["weighted"]:
-            decisions = weighted_false_discovery_control(
-                detector.last_result,
-                alpha=cfg["conformal"]["fdr_rate"],
-                pruning=pruning_method,
-                seed=seed,
+            if approach_config["weighted"]:
+                decisions = weighted_false_discovery_control(
+                    detector.last_result,
+                    alpha=cfg["conformal"]["fdr_rate"],
+                    pruning=pruning_method,
+                    seed=seed,
+                )
+            else:
+                decisions = (
+                    false_discovery_control(p_values, method="bh")
+                    <= cfg["conformal"]["fdr_rate"]
+                )
+        except Exception as exc:
+            get_logger("experiment").warning(
+                f"Skipping {ds_name} seed {seed} severity={severity:g} "
+                f"{approach_name} with {model_name}: {type(exc).__name__}: {exc}"
             )
-        else:
-            decisions = (
-                false_discovery_control(p_values, method="bh")
-                <= cfg["conformal"]["fdr_rate"]
-            )
+            continue
 
         fdr = false_discovery_rate(y=y_test, y_hat=decisions)
         power = statistical_power(y=y_test, y_hat=decisions)

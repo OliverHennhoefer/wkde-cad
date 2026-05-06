@@ -12,7 +12,7 @@ datasets = [
     "mammography",
 ]
 severities = [0.0, 0.5, 1.0, 4.0]
-output_dir = "outputs/experiment_results/test"
+output_dir = "outputs/experiment_results/logistic"
 
 [model_selection]
 models = [
@@ -24,7 +24,7 @@ folds = 10
 output_dir = "outputs/model_selection"
 
 [splits]
-train_split = 0.5
+train_split = 0.4
 test_use_proportion = 0.5
 test_anomaly_rate = 0.05
 

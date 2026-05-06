@@ -13,6 +13,17 @@ from src.utils.registry import get_dataset_enum, get_model_instance
 from src.utils.splits import split_model_selection_evaluation
 
 
+def _normalized_scores(scores: np.ndarray) -> np.ndarray:
+    score_min = float(np.min(scores))
+    score_max = float(np.max(scores))
+    if not np.isfinite(score_min) or not np.isfinite(score_max):
+        raise ValueError("Model produced non-finite decision scores.")
+    score_range = score_max - score_min
+    if score_range <= 0.0:
+        raise ValueError("Model produced constant decision scores.")
+    return (scores - score_min) / score_range
+
+
 def process_seed_phase1(
     seed,
     ds_name,
@@ -43,70 +54,82 @@ def process_seed_phase1(
             random_state=seed,
         )
         fold_metrics = []
+        fit_error = ""
 
-        for fold_idx, (train_idx, test_idx) in enumerate(kf.split(normal_train)):
-            x_normal_train = normal_train.iloc[train_idx].drop(columns=["Class"])
-            x_normal_test = normal_train.iloc[test_idx].drop(columns=["Class"])
+        try:
+            for fold_idx, (train_idx, test_idx) in enumerate(kf.split(normal_train)):
+                x_normal_train = normal_train.iloc[train_idx].drop(columns=["Class"])
+                x_normal_test = normal_train.iloc[test_idx].drop(columns=["Class"])
 
-            n_anomalies_needed = int(
-                len(x_normal_test)
-                * empirical_anomaly_rate
-                / (1 - empirical_anomaly_rate)
-            )
-            n_anomalies_needed = max(n_anomalies_needed, 5)
+                n_anomalies_needed = int(
+                    len(x_normal_test)
+                    * empirical_anomaly_rate
+                    / (1 - empirical_anomaly_rate)
+                )
+                n_anomalies_needed = max(n_anomalies_needed, 5)
 
-            rng = np.random.default_rng(seed + fold_idx)
-            anomaly_idx = rng.choice(
-                len(anomaly_train),
-                size=min(n_anomalies_needed, len(anomaly_train)),
-                replace=False,
-            )
-            X_anomaly_test = anomaly_train.iloc[anomaly_idx].drop(columns=["Class"])
+                rng = np.random.default_rng(seed + fold_idx)
+                anomaly_idx = rng.choice(
+                    len(anomaly_train),
+                    size=min(n_anomalies_needed, len(anomaly_train)),
+                    replace=False,
+                )
+                X_anomaly_test = anomaly_train.iloc[anomaly_idx].drop(
+                    columns=["Class"]
+                )
 
-            X_train = x_normal_train.values
-            X_test = pd.concat([x_normal_test, X_anomaly_test]).values
-            y_test = np.concatenate(
-                [np.zeros(len(x_normal_test)), np.ones(len(X_anomaly_test))]
-            )
+                X_train = x_normal_train.values
+                X_test = pd.concat([x_normal_test, X_anomaly_test]).values
+                y_test = np.concatenate(
+                    [np.zeros(len(x_normal_test)), np.ones(len(X_anomaly_test))]
+                )
 
-            scaler = StandardScaler()
-            X_train = scaler.fit_transform(X_train)
-            X_test = scaler.transform(X_test)
+                scaler = StandardScaler()
+                X_train = scaler.fit_transform(X_train)
+                X_test = scaler.transform(X_test)
 
-            model = get_model_instance(model_name, random_state=seed)
-            model.fit(X_train)
-            y_scores = model.decision_function(X_test)
+                model = get_model_instance(model_name, random_state=seed)
+                model.fit(X_train)
+                y_scores = model.decision_function(X_test)
 
-            prauc = average_precision_score(y_test, y_scores)
-            rocauc = roc_auc_score(y_test, y_scores)
-            y_probs = (y_scores - y_scores.min()) / (y_scores.max() - y_scores.min())
-            brier = brier_score_loss(y_test, y_probs)
+                prauc = average_precision_score(y_test, y_scores)
+                rocauc = roc_auc_score(y_test, y_scores)
+                y_probs = _normalized_scores(y_scores)
+                brier = brier_score_loss(y_test, y_probs)
 
-            fold_metrics.append(
-                {
-                    "dataset": ds_name,
-                    "model": model_name,
-                    "fold": fold_idx,
-                    "prauc": prauc,
-                    "rocauc": rocauc,
-                    "brier": brier,
-                }
-            )
+                fold_metrics.append(
+                    {
+                        "dataset": ds_name,
+                        "model": model_name,
+                        "fold": fold_idx,
+                        "prauc": prauc,
+                        "rocauc": rocauc,
+                        "brier": brier,
+                    }
+                )
+        except Exception as exc:
+            fit_error = f"{type(exc).__name__}: {exc}"
 
-        df_folds = pd.DataFrame(fold_metrics)
-        mean_prauc = df_folds["prauc"].mean()
-        mean_rocauc = df_folds["rocauc"].mean()
-        mean_brier = df_folds["brier"].mean()
+        if fit_error:
+            mean_prauc = np.nan
+            mean_rocauc = np.nan
+            mean_brier = np.nan
+        else:
+            df_folds = pd.DataFrame(fold_metrics)
+            mean_prauc = df_folds["prauc"].mean()
+            mean_rocauc = df_folds["rocauc"].mean()
+            mean_brier = df_folds["brier"].mean()
 
         results = {
             "dataset": ds_name,
             "model": model_name,
             "mean_prauc": mean_prauc,
-            "std_prauc": df_folds["prauc"].std(),
+            "std_prauc": np.nan if fit_error else df_folds["prauc"].std(),
             "mean_rocauc": mean_rocauc,
-            "std_rocauc": df_folds["rocauc"].std(),
+            "std_rocauc": np.nan if fit_error else df_folds["rocauc"].std(),
             "mean_brier": mean_brier,
-            "std_brier": df_folds["brier"].std(),
+            "std_brier": np.nan if fit_error else df_folds["brier"].std(),
+            "fit_error": fit_error,
         }
         model_results.append(results)
 
@@ -119,11 +142,28 @@ def process_seed_phase1(
                 "prauc": mean_prauc,
                 "rocauc": mean_rocauc,
                 "brier": mean_brier,
+                "fit_error": fit_error,
             }
         )
 
+    valid_model_results = [
+        result
+        for result in model_results
+        if np.isfinite(result["mean_prauc"])
+        and np.isfinite(result["mean_rocauc"])
+        and np.isfinite(result["mean_brier"])
+    ]
+    if not valid_model_results:
+        errors = "; ".join(
+            f"{result['model']}: {result['fit_error']}" for result in model_results
+        )
+        raise ValueError(
+            f"No valid model-selection candidates for {ds_name} seed={seed}. "
+            f"Errors: {errors}"
+        )
+
     best_model = max(
-        model_results,
+        valid_model_results,
         key=lambda x: (x["mean_prauc"], x["mean_rocauc"], -x["mean_brier"]),
     )
 
@@ -132,11 +172,54 @@ def process_seed_phase1(
     df_all = pd.DataFrame(all_fold_data)
     df_all["is_best"] = df_all["model"] == best_model["model"]
     df_all = df_all[
-        ["seed", "dataset", "model", "fold", "prauc", "rocauc", "brier", "is_best"]
+        [
+            "seed",
+            "dataset",
+            "model",
+            "fold",
+            "prauc",
+            "rocauc",
+            "brier",
+            "fit_error",
+            "is_best",
+        ]
     ]
     df_all.to_csv(csv_path, mode="w", header=True, index=False)
 
     return ds_name, seed, best_model["model"]
+
+
+def _selection_csv_complete(
+    csv_path: Path,
+    *,
+    seeds: list[int],
+    models: list[str],
+) -> bool:
+    if not csv_path.exists():
+        return False
+
+    try:
+        selection_df = pd.read_csv(csv_path)
+    except pd.errors.EmptyDataError:
+        return False
+
+    required_columns = {"seed", "model", "is_best"}
+    if not required_columns.issubset(selection_df.columns):
+        return False
+
+    seed_values = pd.to_numeric(selection_df["seed"], errors="coerce")
+    model_values = selection_df["model"].astype(str).str.lower()
+    best_values = selection_df["is_best"].astype(str).str.lower().eq("true")
+    required_models = {str(model).lower() for model in models}
+
+    for seed in seeds:
+        seed_mask = seed_values.eq(int(seed))
+        if not required_models.issubset(set(model_values[seed_mask])):
+            return False
+        if not best_values[seed_mask].any():
+            return False
+
+    return True
 
 
 def run_model_selection(
@@ -153,10 +236,18 @@ def run_model_selection(
 
     for ds_name in datasets:
         csv_path = output_dir / f"{ds_name}.csv"
+        models = cfg["model_selection"]["models"]
+        models = models if isinstance(models, list) else [models]
+        models = [str(model).lower() for model in models]
 
-        if csv_path.exists():
+        if _selection_csv_complete(csv_path, seeds=seeds, models=models):
             logger.info(f"Skipping model selection for {ds_name} (results exist)")
             continue
+        if csv_path.exists():
+            logger.info(
+                f"Recomputing model selection for {ds_name} "
+                "(cached results do not cover configured seeds/models)"
+            )
 
         dataset_enum = get_dataset_enum(ds_name)
         data = load(dataset_enum, setup=False)
@@ -165,8 +256,6 @@ def run_model_selection(
         anomaly = data[data["Class"] == 1]
 
         empirical_anomaly_rate = len(anomaly) / len(data)
-        models = cfg["model_selection"]["models"]
-        models = models if isinstance(models, list) else [models]
 
         tasks = [
             (

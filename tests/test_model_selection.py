@@ -89,6 +89,11 @@ class DeterministicDetector:
         return x_test[:, 0] + 0.1 * x_test[:, 1]
 
 
+class FailingDetector(DeterministicDetector):
+    def fit(self, x_train):
+        raise ValueError("fit failed")
+
+
 class SharedModelSelectionTest(unittest.TestCase):
     def test_model_selection_evaluation_split_is_disjoint_and_deterministic(self):
         data = _dataframe()
@@ -140,7 +145,20 @@ class SharedModelSelectionTest(unittest.TestCase):
     def test_existing_selection_csv_skips_without_loading_data(self):
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
-            (output_dir / "demo.csv").write_text("seed,dataset\n1,demo\n")
+            pd.DataFrame(
+                [
+                    {
+                        "seed": 1,
+                        "dataset": "demo",
+                        "model": "linear",
+                        "fold": "mean",
+                        "prauc": 1.0,
+                        "rocauc": 1.0,
+                        "brier": 0.0,
+                        "is_best": True,
+                    }
+                ]
+            ).to_csv(output_dir / "demo.csv", index=False)
             logger = mock.Mock()
 
             with mock.patch(
@@ -159,6 +177,74 @@ class SharedModelSelectionTest(unittest.TestCase):
             logger.info.assert_called_with(
                 "Skipping model selection for demo (results exist)"
             )
+
+    def test_incomplete_selection_csv_reruns_when_configured_models_are_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            pd.DataFrame(
+                [
+                    {
+                        "seed": 1,
+                        "dataset": "demo",
+                        "model": "linear",
+                        "fold": "mean",
+                        "prauc": 1.0,
+                        "rocauc": 1.0,
+                        "brier": 0.0,
+                        "is_best": True,
+                    }
+                ]
+            ).to_csv(output_dir / "demo.csv", index=False)
+
+            def write_seed_csv(
+                seed,
+                ds_name,
+                normal,
+                anomaly,
+                empirical_anomaly_rate,
+                models,
+                cfg,
+                output_dir,
+            ):
+                pd.DataFrame(
+                    [
+                        {
+                            "seed": seed,
+                            "dataset": ds_name,
+                            "model": model,
+                            "fold": "mean",
+                            "prauc": 1.0,
+                            "rocauc": 1.0,
+                            "brier": 0.0,
+                            "is_best": model == "linear",
+                        }
+                        for model in models
+                    ]
+                ).to_csv(output_dir / f"{ds_name}_seed{seed}.csv", index=False)
+                return ds_name, seed, "linear"
+
+            cfg = _cfg()
+            cfg["model_selection"]["models"] = ["linear", "hbos"]
+            with (
+                mock.patch("src.model_selection.get_dataset_enum", return_value="demo"),
+                mock.patch("src.model_selection.load", return_value=_dataframe()),
+                mock.patch(
+                    "src.model_selection.process_seed_phase1",
+                    side_effect=write_seed_csv,
+                ) as process_seed_phase1,
+            ):
+                model_selection.run_model_selection(
+                    cfg=cfg,
+                    datasets=["demo"],
+                    seeds=[1],
+                    output_dir=output_dir,
+                    jobs=1,
+                    logger=mock.Mock(),
+                )
+
+            process_seed_phase1.assert_called_once()
+            merged = pd.read_csv(output_dir / "demo.csv")
+            self.assertEqual(set(merged["model"]), {"linear", "hbos"})
 
     def test_missing_selection_csv_merges_seed_files_in_seed_order_and_cleans_up(self):
         def write_seed_csv(
@@ -259,6 +345,38 @@ class SharedModelSelectionTest(unittest.TestCase):
 
         self.assertEqual(result, ("demo", 5, "linear"))
         self.assertEqual(captured, {"train_split": 0.75, "seed": 5})
+
+    def test_model_selection_skips_failed_candidate_and_selects_valid_model(self):
+        def model_factory(model_name, random_state=None):
+            if model_name == "bad":
+                return FailingDetector()
+            return DeterministicDetector()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch(
+                "src.model_selection.get_model_instance",
+                side_effect=model_factory,
+            ):
+                result = model_selection.process_seed_phase1(
+                    seed=5,
+                    ds_name="demo",
+                    normal=_dataframe().query("Class == 0"),
+                    anomaly=_dataframe().query("Class == 1"),
+                    empirical_anomaly_rate=10 / 34,
+                    models=["bad", "linear"],
+                    cfg=_cfg(),
+                    output_dir=Path(tmp),
+                )
+
+            self.assertEqual(result, ("demo", 5, "linear"))
+            selection = pd.read_csv(Path(tmp) / "demo_seed5.csv")
+
+        failed = selection[selection["model"] == "bad"].iloc[0]
+        selected = selection[selection["model"] == "linear"].iloc[0]
+        self.assertFalse(bool(failed["is_best"]))
+        self.assertIn("fit failed", failed["fit_error"])
+        self.assertTrue(bool(selected["is_best"]))
+        self.assertTrue(pd.isna(selected["fit_error"]))
 
     def test_selection_worker_is_deterministic_for_same_seed_and_inputs(self):
         with (
@@ -475,6 +593,31 @@ class SharedModelSelectionTest(unittest.TestCase):
         row = rows[0]
         for key, value in audit.items():
             self.assertEqual(row[key], value)
+
+    def test_process_shift_seed_skips_failed_detector_without_crashing(self):
+        cfg = _cfg()
+        cfg["splits"]["train_split"] = 0.5
+        cfg["covariate_shift"]["propensity_min"] = 0.2
+        cfg["covariate_shift"]["propensity_max"] = 0.8
+
+        with mock.patch.object(
+            experiment,
+            "get_model_instance",
+            return_value=FailingDetector(),
+        ):
+            rows = experiment.process_shift_seed(
+                1,
+                0.0,
+                "bad",
+                "demo",
+                _dataframe().query("Class == 0"),
+                _dataframe().query("Class == 1"),
+                cfg,
+                ["empirical"],
+                experiment._pruning_method("homogeneous"),
+            )
+
+        self.assertEqual(rows, [])
 
     def test_covariate_shift_filters_unweighted_methods_to_zero_severity(self):
         captured = []
