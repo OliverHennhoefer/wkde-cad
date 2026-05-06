@@ -27,6 +27,7 @@ from src.model_selection import run_model_selection
 from src.utils.data_loader import load
 from src.utils.logger import get_logger
 from src.utils.registry import get_dataset_enum, get_model_instance
+from src.utils.splits import split_model_selection_evaluation
 from src.utils.weight_estimators import build_weight_estimator
 
 
@@ -221,6 +222,7 @@ def process_shift_seed(
     cfg: dict[str, Any],
     approaches_to_run: list[str],
     pruning_method: Pruning,
+    split_audit: dict[str, int] | None = None,
 ) -> list[dict[str, Any]] | None:
     feature_columns = [col for col in normal.columns if col != "Class"]
     shift_cfg = cfg["covariate_shift"]
@@ -336,6 +338,18 @@ def process_shift_seed(
     base_diagnostics = {
         "severity": severity,
         "weight_mode": weight_mode,
+        "n_normal_model_selection_excluded": int(
+            (split_audit or {}).get("n_normal_model_selection_excluded", 0)
+        ),
+        "n_anomaly_model_selection_excluded": int(
+            (split_audit or {}).get("n_anomaly_model_selection_excluded", 0)
+        ),
+        "n_normal_evaluation_pool": int(
+            (split_audit or {}).get("n_normal_evaluation_pool", len(normal))
+        ),
+        "n_anomaly_evaluation_pool": int(
+            (split_audit or {}).get("n_anomaly_evaluation_pool", len(anomaly))
+        ),
         "target_test_probability": propensity_model.target_probability,
         "propensity_mean": float(np.mean(propensities)),
         "propensity_std": float(np.std(propensities)),
@@ -512,6 +526,23 @@ def run_experiment(
 
         tasks = []
         for _, row in best_models.iterrows():
+            seed_value = int(row["seed"])
+            split = split_model_selection_evaluation(
+                normal,
+                anomaly,
+                train_split=cfg["splits"]["train_split"],
+                seed=seed_value,
+            )
+            split_audit = {
+                "n_normal_model_selection_excluded": len(
+                    split.normal_model_selection
+                ),
+                "n_anomaly_model_selection_excluded": len(
+                    split.anomaly_model_selection
+                ),
+                "n_normal_evaluation_pool": len(split.normal_evaluation),
+                "n_anomaly_evaluation_pool": len(split.anomaly_evaluation),
+            }
             for severity in severities:
                 severity_approaches = _approaches_for_severity(
                     approaches_to_run,
@@ -525,15 +556,16 @@ def run_experiment(
                     continue
                 tasks.append(
                     (
-                        int(row["seed"]),
+                        seed_value,
                         float(severity),
                         row["model"],
                         ds_name,
-                        normal,
-                        anomaly,
+                        split.normal_evaluation,
+                        split.anomaly_evaluation,
                         cfg,
                         severity_approaches,
                         pruning_method,
+                        split_audit,
                     )
                 )
 

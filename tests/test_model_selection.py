@@ -8,6 +8,10 @@ import pandas as pd
 
 import src.experiment as experiment
 import src.model_selection as model_selection
+from src.utils.splits import (
+    ModelSelectionEvaluationSplit,
+    split_model_selection_evaluation,
+)
 
 
 def _cfg(meta_seeds=2):
@@ -72,6 +76,12 @@ def _dataframe():
 
 
 class DeterministicDetector:
+    def get_params(self, deep=True):
+        return {}
+
+    def set_params(self, **params):
+        return self
+
     def fit(self, x_train):
         return self
 
@@ -80,6 +90,53 @@ class DeterministicDetector:
 
 
 class SharedModelSelectionTest(unittest.TestCase):
+    def test_model_selection_evaluation_split_is_disjoint_and_deterministic(self):
+        data = _dataframe()
+        normal = data.query("Class == 0")
+        anomaly = data.query("Class == 1")
+
+        split1 = split_model_selection_evaluation(
+            normal,
+            anomaly,
+            train_split=0.5,
+            seed=11,
+        )
+        split2 = split_model_selection_evaluation(
+            normal,
+            anomaly,
+            train_split=0.5,
+            seed=11,
+        )
+
+        self.assertTrue(
+            split1.normal_model_selection.index.intersection(
+                split1.normal_evaluation.index
+            ).empty
+        )
+        self.assertTrue(
+            split1.anomaly_model_selection.index.intersection(
+                split1.anomaly_evaluation.index
+            ).empty
+        )
+        self.assertEqual(
+            set(split1.normal_model_selection.index)
+            | set(split1.normal_evaluation.index),
+            set(normal.index),
+        )
+        self.assertEqual(
+            set(split1.anomaly_model_selection.index)
+            | set(split1.anomaly_evaluation.index),
+            set(anomaly.index),
+        )
+        pd.testing.assert_frame_equal(
+            split1.normal_model_selection,
+            split2.normal_model_selection,
+        )
+        pd.testing.assert_frame_equal(
+            split1.anomaly_evaluation,
+            split2.anomaly_evaluation,
+        )
+
     def test_existing_selection_csv_skips_without_loading_data(self):
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
@@ -155,6 +212,54 @@ class SharedModelSelectionTest(unittest.TestCase):
             self.assertFalse((output_dir / "demo_seed2.csv").exists())
             self.assertFalse((output_dir / "demo_seed1.csv").exists())
 
+    def test_model_selection_uses_only_model_selection_pools(self):
+        data = _dataframe()
+        normal = data.query("Class == 0")
+        anomaly = data.query("Class == 1")
+        captured = {}
+
+        def fake_split(normal_arg, anomaly_arg, *, train_split, seed):
+            captured["train_split"] = train_split
+            captured["seed"] = seed
+            return ModelSelectionEvaluationSplit(
+                normal_model_selection=normal.iloc[:12].copy(),
+                normal_evaluation=pd.DataFrame(
+                    {"x1": ["bad"], "x2": ["bad"], "Class": [0]},
+                    index=[999],
+                ),
+                anomaly_model_selection=anomaly.iloc[:6].copy(),
+                anomaly_evaluation=pd.DataFrame(
+                    {"x1": ["bad"], "x2": ["bad"], "Class": [1]},
+                    index=[1000],
+                ),
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with (
+                mock.patch.object(
+                    model_selection,
+                    "split_model_selection_evaluation",
+                    side_effect=fake_split,
+                ),
+                mock.patch(
+                    "src.model_selection.get_model_instance",
+                    return_value=DeterministicDetector(),
+                ),
+            ):
+                result = model_selection.process_seed_phase1(
+                    seed=5,
+                    ds_name="demo",
+                    normal=normal,
+                    anomaly=anomaly,
+                    empirical_anomaly_rate=10 / 34,
+                    models=["linear"],
+                    cfg=_cfg(),
+                    output_dir=Path(tmp),
+                )
+
+        self.assertEqual(result, ("demo", 5, "linear"))
+        self.assertEqual(captured, {"train_split": 0.75, "seed": 5})
+
     def test_selection_worker_is_deterministic_for_same_seed_and_inputs(self):
         with (
             tempfile.TemporaryDirectory() as tmp1,
@@ -227,7 +332,11 @@ class SharedModelSelectionTest(unittest.TestCase):
             cfg,
             approaches_to_run,
             pruning_method,
+            split_audit,
         ):
+            calls[-1]["normal_indices"] = list(normal.index)
+            calls[-1]["anomaly_indices"] = list(anomaly.index)
+            calls[-1]["split_audit"] = dict(split_audit)
             return [
                 {
                     "seed": seed,
@@ -281,10 +390,91 @@ class SharedModelSelectionTest(unittest.TestCase):
                 )
 
             self.assertEqual(
-                calls, [{"datasets": ["demo"], "seeds": [1, 2, 3], "jobs": 1}]
+                {
+                    "datasets": calls[0]["datasets"],
+                    "seeds": calls[0]["seeds"],
+                    "jobs": calls[0]["jobs"],
+                },
+                {"datasets": ["demo"], "seeds": [1, 2, 3], "jobs": 1},
             )
             results = pd.read_csv(output_dir / "demo.csv")
             self.assertEqual(results["seed"].tolist(), [1])
+            expected_split = split_model_selection_evaluation(
+                _dataframe().query("Class == 0"),
+                _dataframe().query("Class == 1"),
+                train_split=0.75,
+                seed=1,
+            )
+            self.assertEqual(
+                calls[0]["normal_indices"],
+                list(expected_split.normal_evaluation.index),
+            )
+            self.assertEqual(
+                calls[0]["anomaly_indices"],
+                list(expected_split.anomaly_evaluation.index),
+            )
+            self.assertTrue(
+                set(calls[0]["normal_indices"]).isdisjoint(
+                    expected_split.normal_model_selection.index
+                )
+            )
+            self.assertTrue(
+                set(calls[0]["anomaly_indices"]).isdisjoint(
+                    expected_split.anomaly_model_selection.index
+                )
+            )
+            self.assertEqual(
+                calls[0]["split_audit"],
+                {
+                    "n_normal_model_selection_excluded": len(
+                        expected_split.normal_model_selection
+                    ),
+                    "n_anomaly_model_selection_excluded": len(
+                        expected_split.anomaly_model_selection
+                    ),
+                    "n_normal_evaluation_pool": len(
+                        expected_split.normal_evaluation
+                    ),
+                    "n_anomaly_evaluation_pool": len(
+                        expected_split.anomaly_evaluation
+                    ),
+                },
+            )
+
+    def test_process_shift_seed_records_strict_split_audit_columns(self):
+        cfg = _cfg()
+        cfg["splits"]["train_split"] = 0.5
+        cfg["covariate_shift"]["propensity_min"] = 0.2
+        cfg["covariate_shift"]["propensity_max"] = 0.8
+        audit = {
+            "n_normal_model_selection_excluded": 12,
+            "n_anomaly_model_selection_excluded": 5,
+            "n_normal_evaluation_pool": 12,
+            "n_anomaly_evaluation_pool": 5,
+        }
+
+        with mock.patch.object(
+            experiment,
+            "get_model_instance",
+            return_value=DeterministicDetector(),
+        ):
+            rows = experiment.process_shift_seed(
+                1,
+                0.0,
+                "linear",
+                "demo",
+                _dataframe().query("Class == 0"),
+                _dataframe().query("Class == 1"),
+                cfg,
+                ["empirical"],
+                experiment._pruning_method("homogeneous"),
+                audit,
+            )
+
+        self.assertIsNotNone(rows)
+        row = rows[0]
+        for key, value in audit.items():
+            self.assertEqual(row[key], value)
 
     def test_covariate_shift_filters_unweighted_methods_to_zero_severity(self):
         captured = []
@@ -316,6 +506,7 @@ class SharedModelSelectionTest(unittest.TestCase):
             cfg,
             approaches_to_run,
             pruning_method,
+            split_audit,
         ):
             captured.append((severity, list(approaches_to_run)))
             return [

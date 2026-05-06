@@ -5,11 +5,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
-from sklearn.model_selection import KFold, train_test_split
+from sklearn.model_selection import KFold
 from sklearn.preprocessing import StandardScaler
 
 from src.utils.data_loader import load
 from src.utils.registry import get_dataset_enum, get_model_instance
+from src.utils.splits import split_model_selection_evaluation
 
 
 def process_seed_phase1(
@@ -23,16 +24,14 @@ def process_seed_phase1(
     output_dir,
 ):
     """Process a single seed for Phase 1: Model Selection."""
-    normal_train, _ = train_test_split(
+    split = split_model_selection_evaluation(
         normal,
-        train_size=cfg["splits"]["train_split"],
-        random_state=seed,
-    )
-    anomaly_train, _ = train_test_split(
         anomaly,
-        train_size=cfg["splits"]["train_split"],
-        random_state=seed,
+        train_split=cfg["splits"]["train_split"],
+        seed=seed,
     )
+    normal_train = split.normal_model_selection
+    anomaly_train = split.anomaly_model_selection
 
     model_results = []
     all_fold_data = []

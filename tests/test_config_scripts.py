@@ -83,6 +83,52 @@ bins = 7
             self.assertEqual(captured["output_dir"], tmp_path / "plots")
             self.assertEqual(captured["bins"], 7)
 
+    def test_plot_covariate_shift_uses_seed_specific_evaluation_pool(self):
+        normal = pd.DataFrame(
+            {
+                "x1": [float(i) for i in range(16)],
+                "x2": [float(i * i) for i in range(16)],
+                "Class": [0] * 16,
+            }
+        )
+        anomaly = pd.DataFrame(
+            {
+                "x1": [20.0 + i for i in range(8)],
+                "x2": [30.0 + i for i in range(8)],
+                "Class": [1] * 8,
+            },
+            index=range(16, 24),
+        )
+
+        diagnostics, _ = plot_covariate_shift._split_diagnostics(
+            normal=normal,
+            anomaly=anomaly,
+            feature_columns=["x1", "x2"],
+            train_split=0.5,
+            test_use_proportion=0.5,
+            test_anomaly_rate=0.2,
+            severity=0.0,
+            propensity_min=0.2,
+            propensity_max=0.8,
+            seeds=[3],
+        )
+        split = plot_covariate_shift.split_model_selection_evaluation(
+            normal,
+            anomaly,
+            train_split=0.5,
+            seed=3,
+        )
+
+        self.assertEqual(
+            set(diagnostics["source_index"]),
+            set(split.normal_evaluation.index),
+        )
+        self.assertTrue(
+            set(diagnostics["source_index"]).isdisjoint(
+                split.normal_model_selection.index
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -19,6 +19,7 @@ from sklearn.preprocessing import StandardScaler
 from src.covariate_shift import fit_propensity_model, rejection_sample
 from src.utils.data_loader import load
 from src.utils.registry import get_dataset_enum
+from src.utils.splits import split_model_selection_evaluation
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -108,33 +109,50 @@ def _split_diagnostics(
     propensity_max: float,
     seeds: list[int],
 ) -> tuple[pd.DataFrame, Any]:
-    model = fit_propensity_model(
-        normal[feature_columns],
-        train_split=train_split,
-        severity=severity,
-        propensity_min=propensity_min,
-        propensity_max=propensity_max,
-    )
     rows = []
-    scores = model.score(normal[feature_columns])
-    propensities = model.propensity(normal[feature_columns])
-    score_by_index = pd.Series(scores, index=normal.index)
-    propensity_by_index = pd.Series(propensities, index=normal.index)
+    first_model = None
 
     for seed in seeds:
-        normal_assignment_uniforms = _seeded_uniforms(normal.index, seed)
-        anomaly_assignment_uniforms = _seeded_uniforms(anomaly.index, seed + 10_000)
-        normal_test_priority = _seeded_uniforms(normal.index, seed + 20_000)
+        split = split_model_selection_evaluation(
+            normal,
+            anomaly,
+            train_split=train_split,
+            seed=seed,
+        )
+        eval_normal = split.normal_evaluation
+        eval_anomaly = split.anomaly_evaluation
+
+        model = fit_propensity_model(
+            eval_normal[feature_columns],
+            train_split=train_split,
+            severity=severity,
+            propensity_min=propensity_min,
+            propensity_max=propensity_max,
+        )
+        if first_model is None:
+            first_model = model
+
+        scores = model.score(eval_normal[feature_columns])
+        propensities = model.propensity(eval_normal[feature_columns])
+        score_by_index = pd.Series(scores, index=eval_normal.index)
+        propensity_by_index = pd.Series(propensities, index=eval_normal.index)
+
+        normal_assignment_uniforms = _seeded_uniforms(eval_normal.index, seed)
+        anomaly_assignment_uniforms = _seeded_uniforms(
+            eval_anomaly.index,
+            seed + 10_000,
+        )
+        normal_test_priority = _seeded_uniforms(eval_normal.index, seed + 20_000)
 
         sample = rejection_sample(
-            normal,
+            eval_normal,
             feature_columns,
             model,
             seed=seed,
             uniforms=normal_assignment_uniforms,
         )
         anomaly_test = _split_anomaly_candidates(
-            anomaly,
+            eval_anomaly,
             feature_columns,
             model,
             train_split,
@@ -165,12 +183,13 @@ def _split_diagnostics(
             n_normal_test,
             normal_test_priority,
         )
-        split_by_index = pd.Series("calibration", index=normal.index)
+        split_by_index = pd.Series("calibration", index=eval_normal.index)
         split_by_index.loc[final_normal_test.index] = "test"
 
         seed_rows = pd.DataFrame(
             {
                 "seed": seed,
+                "source_index": eval_normal.index,
                 "split": split_by_index,
                 "shift_score": score_by_index,
                 "propensity": propensity_by_index,
@@ -179,7 +198,7 @@ def _split_diagnostics(
         )
         rows.append(seed_rows)
 
-    return pd.concat(rows, ignore_index=True), model
+    return pd.concat(rows, ignore_index=True), first_model
 
 
 def _support_table(diagnostics: pd.DataFrame, bins: int) -> pd.DataFrame:
@@ -253,10 +272,10 @@ def _plot_dataset(
     embedding = pca.fit_transform(scaled)
     embedding_df = pd.DataFrame(
         {
+            "source_index": normal.index,
             "pc1": embedding[:, 0],
             "pc2": embedding[:, 1],
-        },
-        index=normal.index,
+        }
     )
     xlim = _padded_limits(embedding[:, 0])
     ylim = _padded_limits(embedding[:, 1])
@@ -287,7 +306,7 @@ def _plot_dataset(
             seeds=seeds,
         )
         first_seed = diagnostics[diagnostics["seed"] == seeds[0]].copy()
-        first_seed = first_seed.join(embedding_df.reset_index(drop=True))
+        first_seed = first_seed.merge(embedding_df, on="source_index", how="left")
         support = _support_table(diagnostics, bins=bins)
         all_propensities.append(first_seed["propensity"].to_numpy())
         panel_data.append((severity, first_seed, support, propensity_model))
@@ -388,6 +407,7 @@ def _plot_dataset(
     )
     fig.suptitle(
         f"{dataset}: rejection-sampling covariate shift "
+        f"after seed-specific model-selection exclusion "
         f"(red markers show final normal test subset for seed {seeds[0]}; "
         f"support bins aggregate {len(seeds)} seed(s))"
     )
