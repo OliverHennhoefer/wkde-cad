@@ -36,7 +36,7 @@ pruning = "homogeneous"             # Options: "deterministic", "homogeneous", "
 
 [weighting]
 mode = "estimated"                  # Options: "oracle", "estimated"
-estimator = "logistic"              # Options: "forest", "forest_bagged", "logistic"
+estimator = "forest"                # Options: "forest", "logistic"
 
 [covariate_shift]
 propensity_min = 0.3
