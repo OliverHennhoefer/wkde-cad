@@ -1,11 +1,16 @@
 import argparse
 import glob
+import math
 import sys
+import tomllib
 from pathlib import Path
 
 import pandas as pd
+from scipy.stats import t
 
 
+DEFAULT_CONFIG = Path(__file__).resolve().parents[2] / "config.toml"
+DEFAULT_DELTA = 0.05
 APPROACH_ORDER = [
     "empirical",
     "empirical_randomized",
@@ -15,6 +20,22 @@ APPROACH_ORDER = [
     "probabilistic_weighted",
 ]
 APPROACH_ORDER_MAP = {name: idx for idx, name in enumerate(APPROACH_ORDER)}
+FDR_CONTROL_SYMBOLS = {
+    "valid": "+",
+    "inconclusive": "=",
+    "violated": "-",
+}
+
+
+def read_default_alpha(config_path: Path = DEFAULT_CONFIG) -> float:
+    """Read the nominal FDR level from the project config."""
+    with open(config_path, "rb") as f:
+        cfg = tomllib.load(f)
+
+    try:
+        return float(cfg["conformal"]["fdr_rate"])
+    except KeyError as exc:
+        raise ValueError(f"Missing conformal.fdr_rate in {config_path}") from exc
 
 
 def load_and_validate_csv(file_path: Path) -> pd.DataFrame:
@@ -75,8 +96,39 @@ def format_metric(mean: float, std: float, precision: int = 3) -> str:
     return f"{mean:.{precision}f} +/- {_normalize_std(std):.{precision}f}"
 
 
-def compute_summary(df: pd.DataFrame) -> pd.DataFrame:
+def classify_fdr_control(
+    *,
+    fdr_mean: float,
+    fdr_std: float,
+    n_runs: int,
+    alpha: float,
+    delta: float,
+) -> str:
+    """Classify FDR control from one-sided Monte Carlo confidence bounds."""
+    if n_runs < 2:
+        return "inconclusive"
+
+    half_width = float(t.ppf(1.0 - delta, n_runs - 1)) * fdr_std / math.sqrt(n_runs)
+    ci_lower = fdr_mean - half_width
+    ci_upper = fdr_mean + half_width
+
+    if ci_upper <= alpha:
+        return "valid"
+    if ci_lower > alpha:
+        return "violated"
+    return "inconclusive"
+
+
+def compute_summary(
+    df: pd.DataFrame,
+    *,
+    alpha: float | None = None,
+    delta: float = DEFAULT_DELTA,
+) -> pd.DataFrame:
     """Summarize performance and shift diagnostics by severity."""
+    if alpha is None:
+        alpha = read_default_alpha()
+
     summary = (
         df.groupby(["dataset", "severity", "weight_mode", "approach"])
         .agg(
@@ -98,6 +150,17 @@ def compute_summary(df: pd.DataFrame) -> pd.DataFrame:
         )
         .reset_index()
     )
+    summary["fdr_control"] = summary.apply(
+        lambda row: classify_fdr_control(
+            fdr_mean=float(row["fdr_mean"]),
+            fdr_std=_normalize_std(row["fdr_std"]),
+            n_runs=int(row["n_runs"]),
+            alpha=alpha,
+            delta=delta,
+        ),
+        axis=1,
+    )
+    summary["fdr_control_symbol"] = summary["fdr_control"].map(FDR_CONTROL_SYMBOLS)
     summary["_approach_order"] = (
         summary["approach"].map(APPROACH_ORDER_MAP).fillna(len(APPROACH_ORDER))
     )
@@ -114,10 +177,11 @@ def print_table(summary: pd.DataFrame) -> None:
         sort=False,
     ):
         print(f"\nDataset: {dataset} | severity: {severity:g} | weights: {weight_mode}")
-        print("=" * 118)
+        print("=" * 124)
         headers = [
             "Approach",
             "FDR",
+            "Ctrl",
             "Power",
             "N",
             "Prop SD",
@@ -126,9 +190,9 @@ def print_table(summary: pd.DataFrame) -> None:
             "Max w",
             "ESS calib/test",
         ]
-        widths = [31, 17, 17, 5, 8, 15, 8, 8, 16]
+        widths = [31, 17, 4, 17, 5, 8, 15, 8, 8, 16]
         print(" ".join(f"{header:<{width}}" for header, width in zip(headers, widths)))
-        print("-" * 118)
+        print("-" * 124)
 
         for _, row in block.iterrows():
             fdr = format_metric(row["fdr_mean"], row["fdr_std"])
@@ -147,6 +211,7 @@ def print_table(summary: pd.DataFrame) -> None:
             values = [
                 row["approach"],
                 fdr,
+                row["fdr_control_symbol"],
                 power,
                 str(int(row["n_runs"])),
                 f"{row['propensity_std_mean']:.3f}",
@@ -161,6 +226,13 @@ def print_table(summary: pd.DataFrame) -> None:
 
 def print_csv(summary: pd.DataFrame) -> None:
     print(summary.to_csv(index=False), end="")
+
+
+def validate_args(alpha: float, delta: float) -> None:
+    if not 0.0 <= alpha <= 1.0:
+        raise ValueError("--alpha must be between 0 and 1")
+    if not 0.0 < delta < 1.0:
+        raise ValueError("--delta must be between 0 and 1")
 
 
 def expand_files(files: list[Path]) -> list[Path]:
@@ -197,8 +269,25 @@ Examples:
         dest="output_format",
         help="Output format (default: table)",
     )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        help=f"Nominal FDR level. Defaults to conformal.fdr_rate in {DEFAULT_CONFIG}.",
+    )
+    parser.add_argument(
+        "--delta",
+        type=float,
+        default=DEFAULT_DELTA,
+        help=(
+            "One-sided confidence-bound tail probability "
+            "(default: 0.05 for 95%% bounds)."
+        ),
+    )
 
     args = parser.parse_args()
+    alpha = args.alpha if args.alpha is not None else read_default_alpha()
+    validate_args(alpha, args.delta)
+
     frames = []
     for file_path in expand_files(args.files):
         if not file_path.exists():
@@ -212,7 +301,11 @@ Examples:
     if not frames:
         raise SystemExit(1)
 
-    summary = compute_summary(pd.concat(frames, ignore_index=True))
+    summary = compute_summary(
+        pd.concat(frames, ignore_index=True),
+        alpha=alpha,
+        delta=args.delta,
+    )
     if args.output_format == "csv":
         print_csv(summary)
     else:
