@@ -19,8 +19,15 @@ HEATMAP_PATH = OUT_DIR / "figure1_heatmaps_alpha_pi_sensitivity.png"
 COLLAPSE_PATH = OUT_DIR / "figure1_collapse_diagnostics.png"
 HEATMAP_SUMMARY_PATH = OUT_DIR / "figure1_heatmap_summary.csv"
 COLLAPSE_SUMMARY_PATH = OUT_DIR / "figure1_collapse_summary.csv"
+SCHEMATIC_POINTS_TIKZ_PATH = OUT_DIR / "figure1_schematic_points_tikz.csv"
+SCHEMATIC_ANNOTATIONS_TIKZ_PATH = OUT_DIR / "figure1_schematic_annotations_tikz.csv"
+HEATMAP_TIKZ_PATH = OUT_DIR / "figure1_heatmap_tikz.csv"
+HEATMAP_BOUNDARY_TIKZ_PATH = OUT_DIR / "figure1_heatmap_boundary_tikz.csv"
+COLLAPSE_TIKZ_PATH = OUT_DIR / "figure1_collapse_tikz.csv"
+COLLAPSE_REFERENCE_TIKZ_PATH = OUT_DIR / "figure1_collapse_reference_tikz.csv"
 
 SUMMARY_VERSION = "split-v1"
+TIKZ_EXPORT_VERSION = "tikz-v1"
 SCENARIOS = [
     {"name": "baseline", "alpha": 0.1, "pi1": 0.1, "label": r"$\alpha=0.10,\ \pi_1=0.10$"},
     {"name": "alpha_005", "alpha": 0.05, "pi1": 0.1, "label": r"$\alpha=0.05,\ \pi_1=0.10$"},
@@ -366,12 +373,19 @@ def summaries_are_current() -> bool:
     )
 
 
+def normalize_summary_keys(summary: pd.DataFrame) -> pd.DataFrame:
+    summary = summary.copy()
+    if "kappa" in summary.columns:
+        summary["kappa"] = summary["kappa"].map(kappa_label)
+    return summary
+
+
 def load_or_build_summaries() -> tuple[pd.DataFrame, pd.DataFrame]:
     if summaries_are_current():
         print("loading existing compact summaries", flush=True)
         return (
-            pd.read_csv(HEATMAP_SUMMARY_PATH),
-            pd.read_csv(COLLAPSE_SUMMARY_PATH),
+            normalize_summary_keys(pd.read_csv(HEATMAP_SUMMARY_PATH)),
+            normalize_summary_keys(pd.read_csv(COLLAPSE_SUMMARY_PATH)),
         )
 
     heatmap_summary, collapse_summary = build_summaries()
@@ -566,6 +580,290 @@ def plot_collapse_figure(summary: pd.DataFrame) -> None:
     plt.close(fig)
 
 
+def export_schematic_tikz() -> None:
+    rng = np.random.default_rng(BASE_SEED)
+    rho = 1.5
+    kappa = 3.5
+    n = 300
+    m = 500
+    pi1 = 0.1
+    n_anomaly = int(round(pi1 * m))
+    n_inlier = m - n_anomaly
+
+    calib = rng.normal([0.0, 0.0], [1.0, 1.0], size=(n, 2))
+    shifted = np.column_stack(
+        [rng.normal(rho, 1.0, n_inlier), rng.normal(0.0, 1.0, n_inlier)]
+    )
+    anomaly = np.column_stack(
+        [rng.normal(rho, 1.0, n_anomaly), rng.normal(kappa, 1.0, n_anomaly)]
+    )
+
+    point_rows = []
+    for group, label, style_key, points, plot_order in [
+        ("calibration", r"$P_0$ calibration", "calibration", calib, 1),
+        ("shifted_inlier", r"$Q_\rho$ shifted inliers", "shifted", shifted, 2),
+        ("anomaly", r"$A_{\rho,\kappa}$ anomalies", "anomaly", anomaly, 3),
+    ]:
+        for idx, (x, y) in enumerate(points):
+            point_rows.append(
+                {
+                    "export_version": TIKZ_EXPORT_VERSION,
+                    "figure": "figure1",
+                    "panel": "A",
+                    "panel_title": "Controlled Gaussian shift",
+                    "plot_order": plot_order,
+                    "point_index": idx,
+                    "group": group,
+                    "method": "",
+                    "scenario": "",
+                    "kappa": "",
+                    "m": "",
+                    "x": x,
+                    "y": y,
+                    "value": "",
+                    "probability": "",
+                    "count": "",
+                    "style_key": style_key,
+                    "label": label,
+                }
+            )
+    pd.DataFrame(point_rows).to_csv(SCHEMATIC_POINTS_TIKZ_PATH, index=False)
+
+    annotation_rows = [
+        {
+            "export_version": TIKZ_EXPORT_VERSION,
+            "figure": "figure1",
+            "panel": "A",
+            "panel_title": "Controlled Gaussian shift",
+            "plot_order": 1,
+            "object_type": "arrow",
+            "x": 0.1,
+            "y": -2.7,
+            "x_end": rho,
+            "y_end": -2.7,
+            "style_key": "covariate_shift_arrow",
+            "label": "benign covariate shift",
+        },
+        {
+            "export_version": TIKZ_EXPORT_VERSION,
+            "figure": "figure1",
+            "panel": "A",
+            "panel_title": "Controlled Gaussian shift",
+            "plot_order": 2,
+            "object_type": "arrow",
+            "x": rho + 2.35,
+            "y": 0.15,
+            "x_end": rho + 2.35,
+            "y_end": kappa,
+            "style_key": "anomaly_direction_arrow",
+            "label": "anomaly direction",
+        },
+        {
+            "export_version": TIKZ_EXPORT_VERSION,
+            "figure": "figure1",
+            "panel": "A",
+            "panel_title": "Controlled Gaussian shift",
+            "plot_order": 3,
+            "object_type": "text",
+            "x": -3.1,
+            "y": 4.85,
+            "x_end": "",
+            "y_end": "",
+            "style_key": "text",
+            "label": r"score $S=T$",
+        },
+        {
+            "export_version": TIKZ_EXPORT_VERSION,
+            "figure": "figure1",
+            "panel": "A",
+            "panel_title": "Controlled Gaussian shift",
+            "plot_order": 4,
+            "object_type": "text",
+            "x": -3.1,
+            "y": 4.45,
+            "x_end": "",
+            "y_end": "",
+            "style_key": "text",
+            "label": r"weights depend on $Z$",
+        },
+    ]
+    pd.DataFrame(annotation_rows).to_csv(SCHEMATIC_ANNOTATIONS_TIKZ_PATH, index=False)
+
+
+def export_heatmap_tikz(summary: pd.DataFrame) -> None:
+    column_specs = [
+        ("inf", "Perfect-score exact WEDF"),
+        ("3.0", r"Finite-score exact WEDF ($\kappa=3.0$)"),
+    ]
+    rows = []
+    boundary_rows = []
+    for row_idx, scenario in enumerate(SCENARIOS):
+        for col_idx, (kappa, title) in enumerate(column_specs):
+            block = summary[
+                summary["scenario"].eq(scenario["name"]) & summary["kappa"].eq(kappa)
+            ].copy()
+            panel = f"heatmap_r{row_idx + 1}_c{col_idx + 1}"
+            block["export_version"] = TIKZ_EXPORT_VERSION
+            block["figure"] = "figure1"
+            block["panel"] = panel
+            block["panel_title"] = title
+            block["plot_order"] = row_idx * len(column_specs) + col_idx + 1
+            block["group"] = "heatmap_cell"
+            block["method"] = "exact_wedf"
+            block["m"] = ""
+            block["x"] = (block["x_left"] + block["x_right"]) / 2.0
+            block["y"] = (block["y_bottom"] + block["y_top"]) / 2.0
+            block["value"] = block["probability"]
+            block["style_key"] = "discovery_probability"
+            block["label"] = scenario["label"]
+            rows.append(
+                block[
+                    [
+                        "export_version",
+                        "figure",
+                        "panel",
+                        "panel_title",
+                        "plot_order",
+                        "group",
+                        "method",
+                        "scenario",
+                        "kappa",
+                        "m",
+                        "x",
+                        "y",
+                        "x_left",
+                        "x_right",
+                        "y_bottom",
+                        "y_top",
+                        "value",
+                        "probability",
+                        "count",
+                        "style_key",
+                        "label",
+                    ]
+                ]
+            )
+
+            x_edges = np.unique(
+                np.concatenate([block["x_left"].to_numpy(), block["x_right"].to_numpy()])
+            )
+            for point_order, x in enumerate([float(x_edges[0]), float(x_edges[-1])], start=1):
+                boundary_rows.append(
+                    {
+                        "export_version": TIKZ_EXPORT_VERSION,
+                        "figure": "figure1",
+                        "panel": panel,
+                        "panel_title": title,
+                        "plot_order": point_order,
+                        "group": "bh_boundary",
+                        "method": "",
+                        "scenario": scenario["name"],
+                        "kappa": kappa,
+                        "m": "",
+                        "x": x,
+                        "y": x,
+                        "value": "",
+                        "probability": "",
+                        "count": "",
+                        "style_key": "diagonal_y_equals_x",
+                        "label": r"$1/p=m/\alpha$",
+                    }
+                )
+
+    pd.concat(rows, ignore_index=True).to_csv(HEATMAP_TIKZ_PATH, index=False)
+    pd.DataFrame(boundary_rows).to_csv(HEATMAP_BOUNDARY_TIKZ_PATH, index=False)
+
+
+def export_collapse_tikz(summary: pd.DataFrame) -> None:
+    panel_specs = [
+        (
+            "D",
+            "first_threshold",
+            "First-threshold diagnostic",
+            r"$\log_{10}\delta$",
+        ),
+        (
+            "E",
+            "rank_aware",
+            "Rank-aware BH-scale diagnostic",
+            r"$\log_{10}\Delta_{\mathrm{BH}}$",
+        ),
+    ]
+    rows = []
+    reference_rows = []
+    for panel_order, (panel, diagnostic, title, label) in enumerate(panel_specs, start=1):
+        block = summary[summary["diagnostic"].eq(diagnostic)].copy()
+        block["export_version"] = TIKZ_EXPORT_VERSION
+        block["figure"] = "figure1"
+        block["panel"] = panel
+        block["panel_title"] = title
+        block["plot_order"] = block["kappa"].map(
+            {kappa: idx + 1 for idx, kappa in enumerate(["inf", "2.0", "2.5", "3.0", "3.5", "4.0"])}
+        )
+        block["group"] = diagnostic
+        block["method"] = "exact_wedf"
+        block["m"] = ""
+        block["y"] = block["probability"]
+        block["value"] = block["probability"]
+        block["style_key"] = "kappa_" + block["kappa"].astype(str)
+        block["label"] = label
+        rows.append(
+            block[
+                [
+                    "export_version",
+                    "figure",
+                    "panel",
+                    "panel_title",
+                    "plot_order",
+                    "group",
+                    "method",
+                    "scenario",
+                    "kappa",
+                    "m",
+                    "x",
+                    "y",
+                    "x_left",
+                    "x_right",
+                    "value",
+                    "probability",
+                    "count",
+                    "style_key",
+                    "label",
+                ]
+            ]
+        )
+        for point_order, y in enumerate([-0.03, 1.03], start=1):
+            reference_rows.append(
+                {
+                    "export_version": TIKZ_EXPORT_VERSION,
+                    "figure": "figure1",
+                    "panel": panel,
+                    "panel_title": title,
+                    "plot_order": panel_order * 10 + point_order,
+                    "group": "reference",
+                    "method": "",
+                    "scenario": BASELINE_SCENARIO,
+                    "kappa": "",
+                    "m": "",
+                    "x": 0.0,
+                    "y": y,
+                    "value": "",
+                    "probability": "",
+                    "count": "",
+                    "style_key": "vertical_zero",
+                    "label": label,
+                }
+            )
+    pd.concat(rows, ignore_index=True).to_csv(COLLAPSE_TIKZ_PATH, index=False)
+    pd.DataFrame(reference_rows).to_csv(COLLAPSE_REFERENCE_TIKZ_PATH, index=False)
+
+
+def export_tikz_csvs(heatmap_summary: pd.DataFrame, collapse_summary: pd.DataFrame) -> None:
+    export_schematic_tikz()
+    export_heatmap_tikz(heatmap_summary)
+    export_collapse_tikz(collapse_summary)
+
+
 def validate_outputs(heatmap_summary: pd.DataFrame, collapse_summary: pd.DataFrame) -> None:
     expected_scenarios = {scenario["name"] for scenario in SCENARIOS}
     observed_scenarios = set(heatmap_summary["scenario"].unique())
@@ -573,9 +871,19 @@ def validate_outputs(heatmap_summary: pd.DataFrame, collapse_summary: pd.DataFra
         raise RuntimeError(f"Unexpected heatmap scenarios: {observed_scenarios}")
     if set(collapse_summary["scenario"].unique()) != {BASELINE_SCENARIO}:
         raise RuntimeError("Collapse summary must contain only the baseline scenario.")
-    for path in [SCHEMATIC_PATH, HEATMAP_PATH, COLLAPSE_PATH]:
+    for path in [
+        SCHEMATIC_PATH,
+        HEATMAP_PATH,
+        COLLAPSE_PATH,
+        SCHEMATIC_POINTS_TIKZ_PATH,
+        SCHEMATIC_ANNOTATIONS_TIKZ_PATH,
+        HEATMAP_TIKZ_PATH,
+        HEATMAP_BOUNDARY_TIKZ_PATH,
+        COLLAPSE_TIKZ_PATH,
+        COLLAPSE_REFERENCE_TIKZ_PATH,
+    ]:
         if not path.exists():
-            raise RuntimeError(f"Missing output figure: {path}")
+            raise RuntimeError(f"Missing output: {path}")
 
 
 def main() -> None:
@@ -593,10 +901,17 @@ def main() -> None:
     plot_panel_a()
     plot_heatmap_grid(heatmap_summary)
     plot_collapse_figure(collapse_summary)
+    export_tikz_csvs(heatmap_summary, collapse_summary)
     validate_outputs(heatmap_summary, collapse_summary)
     print(SCHEMATIC_PATH)
     print(HEATMAP_PATH)
     print(COLLAPSE_PATH)
+    print(SCHEMATIC_POINTS_TIKZ_PATH)
+    print(SCHEMATIC_ANNOTATIONS_TIKZ_PATH)
+    print(HEATMAP_TIKZ_PATH)
+    print(HEATMAP_BOUNDARY_TIKZ_PATH)
+    print(COLLAPSE_TIKZ_PATH)
+    print(COLLAPSE_REFERENCE_TIKZ_PATH)
 
 
 if __name__ == "__main__":
