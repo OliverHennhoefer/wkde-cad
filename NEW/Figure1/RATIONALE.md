@@ -224,16 +224,22 @@ The phase diagrams are rendered as pixel-based heatmaps rather than scatter
 plots. The simulation grid is intentionally widened beyond the original main
 paper grid to make these heatmap rectangles supported by actual simulations:
 the base grid uses `n` from `10` to `4000` and `rho` from `0` to `3.0`.
-A targeted high-resolution supplement adds `n = 8000, 32000`, `rho` up to
-`4.0`, and the smaller `m` values. This fills more of the upper-left
-high-resolution/low-testing-burden region with real simulations. White regions
-mean no simulated setting landed in that diagnostic bin; they are left blank
-rather than interpolated.
+A previous targeted high-resolution supplement added `n = 8000, 32000` only for
+the smaller `m` values. That made some upper heatmap rows partially unsupported
+and produced blank cells. The default run now uses a rectangular base grid only;
+optional supplements must cover all `m` values so every displayed row has
+simulated support across the x-axis.
 
 For display, the heatmap y-axis is capped at the 99.5th percentile of simulated
-attainable resolution. The omitted top tail consists of rare extreme draws that
-otherwise stretch the viewport and create unsupported holes; no colors are
+attainable resolution and then binned adaptively on the observed support. This
+keeps discrete unweighted resolution levels as actual rows instead of placing
+them into a larger fixed-width axis with empty intervals; no colors are
 interpolated or guessed.
+
+Within each generated heatmap figure, all panels share the same displayed x and
+y limits. The underlying CSV still stores only simulated cells with their native
+bin edges; the axis alignment is a plotting choice so scenario comparisons are
+not distorted by panel-specific zooming.
 
 The finite-score column is worse than the perfect-score column solely because
 finite scores overlap with the calibration score distribution. The weights
@@ -287,7 +293,15 @@ accounts for BH's later thresholds, not only the first one.
 ## Output
 
 The script `figure1_phase_transition.py` is intentionally flat and
-self-contained. It now writes compact summaries and three standalone figures:
+self-contained. A default run now writes the same compact summaries and
+standalone figures into two sibling directories:
+
+- `unweighted/`: unshifted exchangeable data, standard conformal p-values, and
+  BH decisions.
+- `weighted/`: the shifted setup above, weighted conformal p-values, and WCS
+  decisions with homogeneous pruning by default.
+
+Each directory contains:
 
 - `figure1_panel_a_schematic.png`: standalone Gaussian-shift schematic.
 - `figure1_heatmaps_alpha_pi_sensitivity.png`: `3 x 2` heatmap grid for
@@ -299,5 +313,16 @@ self-contained. It now writes compact summaries and three standalone figures:
 
 The older raw per-trial CSV and five-panel PNG may still exist locally from
 earlier iterations, but the current workflow does not rely on them.
+
+The weighted WCS implementation follows the Python `weighted_CS` row formula in
+`ying531/conformal-selection`: each auxiliary row uses the tested point weight
+in the numerator and the candidate weight in the denominator. The implementation
+still avoids unnecessary work by skipping hypotheses with `p_j > alpha` before
+constructing `R_{j->0}` rows, since they cannot pass WCS first-step selection.
+Candidate rows are processed in deterministic batches controlled by
+`--wcs-batch-size` or `FIGURE1_WCS_BATCH_SIZE`, which reduces peak memory
+without changing selections. Process-level parallelism is controlled by
+`--workers` or `FIGURE1_WORKERS`; `executor.map` preserves deterministic merge
+order.
 
 The script avoids touching the main project code under `src/`.
