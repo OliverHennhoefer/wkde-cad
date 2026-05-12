@@ -92,9 +92,32 @@ Delta_BH = min_r p_min_(r) / (alpha * r / m),
 
 which accounts for later BH thresholds when several anomalies are present.
 
+## Designed Phase Grid
+
+The main heatmap is a conditional diagnostic grid, not an adaptive binning of
+naturally observed simulation settings. The plotted axes match the supported
+Figure 1 phase-diagram regime:
+
+```text
+x = log10(m / alpha),          y = log10(1 / p_min_anom),
+2.25 <= x, y <= 4.75.
+```
+
+Each visible cell is simulated directly. The x-cell center sets
+`m = round(alpha * 10^x)`. Weighted `(n, rho)` configurations are sampled until
+the realized `log10(1 / p_min_anom)` lands inside the target y-cell. Every
+heatmap cell must have at least one accepted trial; a blank cell is a pipeline
+failure, not an unsupported plotting region.
+
+The `2.25..4.75` viewport is the same computationally meaningful regime chosen
+for Figure 1. Extending farther upward would require much larger exact
+auxiliary-row evaluations for WCS while adding limited practical information
+about the p-value floor mechanism.
+
 ## Methods Shown
 
-The main figure compares three p-value constructions:
+The main figure keeps the weighted oracle, perfect-score setting fixed and
+compares three p-value constructions:
 
 - Exact WEDF: the finite-sample conformal p-value with the full test self-atom.
 - Randomized WEDF: a diagnostic relaxation that randomly splits the test
@@ -109,15 +132,18 @@ and keeps the figure focused on the discreteness mechanism.
 
 The script `figure2_perfect_score_resolution.py` writes:
 
-- `figure2_perfect_score_resolution.png`: the four-panel stress-test figure.
-- `figure2_power_configurations.png`: an additional `2 x 2` power-versus-ESS
-  figure varying `alpha` and the anomaly rate.
-- `figure2_perfect_score_summary.csv`: one compact row per simulated setting
-  and seed, with p-value floors, diagnostics, and method outcomes.
+- `figure2_perfect_score_resolution.png`: the `1 x 3` main mechanism figure:
+  score schematic, supported square phase heatmap, and method-relaxation
+  detectability curves.
+- `figure2_power_configurations.png`: supplemental `2 x 2` power/ESS
+  sensitivity analysis varying `alpha` and the anomaly rate, with
+  `log10(mean N_eff)` on a shared linear x-axis.
+- `figure2_perfect_score_summary.csv`: one compact row per designed phase cell,
+  with accepted-trial counts, p-value floors, diagnostics, and method outcomes.
 - `figure2_key_settings_table.csv`: a short aggregate table contrasting
   feasible and certified-impossible regions.
 - `figure2_power_configurations_summary.csv`: the compact binned summary used
-  for the additional configuration plot.
+  for the supplemental configuration plot.
 
 The workflow is standalone and does not depend on Figure 1 outputs or modify
 the project code under `src/`.

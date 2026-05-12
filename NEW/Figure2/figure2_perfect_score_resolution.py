@@ -24,14 +24,13 @@ PANEL_A_SCORES_TIKZ_PATH = OUT_DIR / "figure2_panel_a_scores_tikz.csv"
 PANEL_A_ANNOTATIONS_TIKZ_PATH = OUT_DIR / "figure2_panel_a_annotations_tikz.csv"
 PANEL_B_HEATMAP_TIKZ_PATH = OUT_DIR / "figure2_panel_b_heatmap_tikz.csv"
 PANEL_B_BOUNDARY_TIKZ_PATH = OUT_DIR / "figure2_panel_b_boundary_tikz.csv"
-PANEL_C_POWER_TIKZ_PATH = OUT_DIR / "figure2_panel_c_power_tikz.csv"
-PANEL_D_DETECTABILITY_TIKZ_PATH = OUT_DIR / "figure2_panel_d_detectability_tikz.csv"
-PANEL_D_REFERENCE_TIKZ_PATH = OUT_DIR / "figure2_panel_d_reference_tikz.csv"
+PANEL_C_DETECTABILITY_TIKZ_PATH = OUT_DIR / "figure2_panel_c_detectability_tikz.csv"
+PANEL_C_REFERENCE_TIKZ_PATH = OUT_DIR / "figure2_panel_c_reference_tikz.csv"
 POWER_CONFIGURATIONS_TIKZ_PATH = OUT_DIR / "figure2_power_configurations_tikz.csv"
 
-SUMMARY_VERSION = "perfect-score-v1"
-POWER_CONFIG_SUMMARY_VERSION = "power-config-v1"
-TIKZ_EXPORT_VERSION = "tikz-v1"
+SUMMARY_VERSION = "perfect-score-v2"
+POWER_CONFIG_SUMMARY_VERSION = "power-config-v2"
+TIKZ_EXPORT_VERSION = "tikz-v2"
 BASE_SEED = 20260509
 WORKERS = max(1, min(8, (os.cpu_count() or 2) - 1))
 
@@ -47,7 +46,12 @@ N_SEEDS = 100
 PANEL_C_M_VALUES = [50, 100, 500, 1000, 2000]
 DELTA_BINS = np.linspace(-2.5, 2.5, 31)
 LOG_ESS_BINS = np.linspace(1.0, 3.1, 22)
-Y_BINS = np.linspace(0.0, 4.6, 47)
+PHASE_VIEW_LIMITS = (2.25, 4.75)
+PHASE_X_BINS = 12
+PHASE_Y_BINS = 12
+PHASE_CELL_TRIALS = 100
+PHASE_MAX_ACCEPT_ATTEMPTS_PER_CELL = 5000
+PHASE_RHO_CANDIDATES = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
 POWER_CONFIGS = [
     {
         "name": "alpha_010_pi1_005",
@@ -168,120 +172,155 @@ def empirical_auc(anomaly_score: float, inlier_scores: np.ndarray) -> float:
     return (less + 0.5 * ties) / len(inlier_scores)
 
 
-def simulate_block(task: tuple[int, float]) -> list[dict[str, float | int | str]]:
-    n_cal, rho = task
+def phase_x_edges() -> np.ndarray:
+    return np.linspace(*PHASE_VIEW_LIMITS, int(PHASE_X_BINS) + 1)
+
+
+def phase_y_edges() -> np.ndarray:
+    return np.linspace(*PHASE_VIEW_LIMITS, int(PHASE_Y_BINS) + 1)
+
+
+def cell_center(edges: np.ndarray, bin_idx: int) -> float:
+    return float((edges[bin_idx] + edges[bin_idx + 1]) / 2.0)
+
+
+def value_in_bin(value: float, edges: np.ndarray, bin_idx: int) -> bool:
+    left = float(edges[bin_idx])
+    right = float(edges[bin_idx + 1])
+    if bin_idx == len(edges) - 2:
+        return left <= value <= right
+    return left <= value < right
+
+
+def m_for_phase_x(alpha: float, x_center: float) -> int:
+    return max(2, int(round(alpha * 10**x_center)))
+
+
+def phase_n_candidates_for_y(y_center: float) -> list[int]:
+    base = max(2, int(round(10**y_center - 1.0)))
+    multipliers = [0.05, 0.1, 0.25, 0.5, 1.0]
+    return sorted({max(2, int(round(base * multiplier))) for multiplier in multipliers})
+
+
+def simulate_perfect_score_trial(
+    n_cal: int,
+    m: int,
+    rho: float,
+    seed: int,
+    alpha: float = ALPHA,
+    pi1: float = PI1,
+) -> dict[str, float | int | str | bool]:
     rho_code = int(round(rho * 1000))
-    rows: list[dict[str, float | int | str]] = []
+    calib_rng = rng_for(n_cal, m, rho_code, seed, 0)
+    calib_x = calib_rng.normal(0.0, 1.0, size=(n_cal, D))
+    calib_scores = calib_rng.normal(0.0, 1.0, n_cal)
+    calib_weights = np.exp(rho * calib_x[:, 0] - 0.5 * rho**2)
+    total_calib_weight = float(np.sum(calib_weights))
+    calib_ess = effective_sample_size(calib_weights)
+    max_normalized_weight = float(np.max(calib_weights) / total_calib_weight)
 
-    for seed in range(N_SEEDS):
-        calib_rng = rng_for(n_cal, rho_code, seed, 0)
-        calib_x = calib_rng.normal(0.0, 1.0, size=(n_cal, D))
-        calib_scores = calib_rng.normal(0.0, 1.0, n_cal)
-        calib_weights = np.exp(rho * calib_x[:, 0] - 0.5 * rho**2)
-        total_calib_weight = float(np.sum(calib_weights))
-        calib_ess = effective_sample_size(calib_weights)
-        max_normalized_weight = float(np.max(calib_weights) / total_calib_weight)
+    order = np.argsort(calib_scores, kind="mergesort")
+    sorted_calib_scores = calib_scores[order]
+    sorted_calib_weights = calib_weights[order]
+    suffix_calib_weights = np.concatenate(
+        ([0.0], np.cumsum(sorted_calib_weights[::-1]))
+    )[::-1]
+    max_calib_score = float(np.max(calib_scores))
 
-        order = np.argsort(calib_scores, kind="mergesort")
-        sorted_calib_scores = calib_scores[order]
-        sorted_calib_weights = calib_weights[order]
-        suffix_calib_weights = np.concatenate(
-            ([0.0], np.cumsum(sorted_calib_weights[::-1]))
-        )[::-1]
-        max_calib_score = float(np.max(calib_scores))
+    n_anomaly = max(1, int(round(pi1 * m)))
+    n_inlier = m - n_anomaly
+    test_rng = rng_for(n_cal, m, rho_code, seed, 1)
+    inlier_x = test_rng.normal(0.0, 1.0, size=(n_inlier, D))
+    anomaly_x = test_rng.normal(0.0, 1.0, size=(n_anomaly, D))
+    inlier_x[:, 0] += rho
+    anomaly_x[:, 0] += rho
+    test_x = np.vstack([inlier_x, anomaly_x])
+    test_weights = np.exp(rho * test_x[:, 0] - 0.5 * rho**2)
 
-        for m in M_VALUES:
-            n_anomaly = max(1, int(round(PI1 * m)))
-            n_inlier = m - n_anomaly
-            test_rng = rng_for(n_cal, m, rho_code, seed, 1)
-            inlier_x = test_rng.normal(0.0, 1.0, size=(n_inlier, D))
-            anomaly_x = test_rng.normal(0.0, 1.0, size=(n_anomaly, D))
-            inlier_x[:, 0] += rho
-            anomaly_x[:, 0] += rho
-            test_x = np.vstack([inlier_x, anomaly_x])
-            test_weights = np.exp(rho * test_x[:, 0] - 0.5 * rho**2)
+    inlier_scores = test_rng.normal(0.0, 1.0, n_inlier)
+    anomaly_scores = np.full(n_anomaly, max_calib_score + DELTA_SCORE)
+    test_scores = np.concatenate([inlier_scores, anomaly_scores])
+    y_true = np.concatenate(
+        [np.zeros(n_inlier, dtype=bool), np.ones(n_anomaly, dtype=bool)]
+    )
 
-            inlier_scores = test_rng.normal(0.0, 1.0, n_inlier)
-            anomaly_scores = np.full(n_anomaly, max_calib_score + DELTA_SCORE)
-            test_scores = np.concatenate([inlier_scores, anomaly_scores])
-            y_true = np.concatenate(
-                [np.zeros(n_inlier, dtype=bool), np.ones(n_anomaly, dtype=bool)]
-            )
+    exact_p_values = weighted_tail_p_values(
+        sorted_calib_scores,
+        suffix_calib_weights,
+        total_calib_weight,
+        test_scores,
+        test_weights,
+    )
+    random_p_values = randomized_weighted_tail_p_values(
+        sorted_calib_scores,
+        suffix_calib_weights,
+        total_calib_weight,
+        test_scores,
+        test_weights,
+        test_rng.random(m),
+    )
+    oracle_p_values = oracle_continuous_tail_p_values(test_scores, y_true)
 
-            exact_p_values = weighted_tail_p_values(
-                sorted_calib_scores,
-                suffix_calib_weights,
-                total_calib_weight,
-                test_scores,
-                test_weights,
-            )
-            random_p_values = randomized_weighted_tail_p_values(
-                sorted_calib_scores,
-                suffix_calib_weights,
-                total_calib_weight,
-                test_scores,
-                test_weights,
-                test_rng.random(m),
-            )
-            oracle_p_values = oracle_continuous_tail_p_values(test_scores, y_true)
+    anomaly_weights = test_weights[n_inlier:]
+    p_min_anomaly_values = anomaly_weights / (
+        anomaly_weights + total_calib_weight
+    )
+    sorted_p_min_anomaly = np.sort(p_min_anomaly_values, kind="mergesort")
+    anomaly_ranks = np.arange(1, n_anomaly + 1)
+    p_min_anomaly = float(sorted_p_min_anomaly[0])
+    delta_min = p_min_anomaly / (alpha / m)
+    rank_delta = float(
+        np.min(sorted_p_min_anomaly / (alpha * anomaly_ranks / m))
+    )
 
-            anomaly_weights = test_weights[n_inlier:]
-            p_min_anomaly_values = anomaly_weights / (
-                anomaly_weights + total_calib_weight
-            )
-            sorted_p_min_anomaly = np.sort(p_min_anomaly_values, kind="mergesort")
-            anomaly_ranks = np.arange(1, n_anomaly + 1)
-            p_min_anomaly = float(sorted_p_min_anomaly[0])
-            delta_min = p_min_anomaly / (ALPHA / m)
-            rank_delta = float(
-                np.min(sorted_p_min_anomaly / (ALPHA * anomaly_ranks / m))
-            )
+    exact_any, exact_power, exact_fdr = discovery_metrics(exact_p_values, y_true, alpha)
+    random_any, random_power, random_fdr = discovery_metrics(
+        random_p_values,
+        y_true,
+        alpha,
+    )
+    oracle_any, oracle_power, oracle_fdr = discovery_metrics(
+        oracle_p_values,
+        y_true,
+        alpha,
+    )
 
-            exact_any, exact_power, exact_fdr = discovery_metrics(exact_p_values, y_true)
-            random_any, random_power, random_fdr = discovery_metrics(random_p_values, y_true)
-            oracle_any, oracle_power, oracle_fdr = discovery_metrics(oracle_p_values, y_true)
-
-            rows.append(
-                {
-                    "summary_version": SUMMARY_VERSION,
-                    "n_cal": n_cal,
-                    "m": m,
-                    "rho": rho,
-                    "seed": seed,
-                    "alpha": ALPHA,
-                    "pi1": PI1,
-                    "n_anomaly": n_anomaly,
-                    "calib_ess": calib_ess,
-                    "max_normalized_calib_weight": max_normalized_weight,
-                    "p_min_anom": p_min_anomaly,
-                    "delta_min": float(delta_min),
-                    "rank_delta": rank_delta,
-                    "certified_no_first_discovery": bool(delta_min > 1.0),
-                    "certified_no_rank_discovery": bool(rank_delta > 1.0),
-                    "log10_m_over_alpha": float(np.log10(m / ALPHA)),
-                    "log10_inverse_p_min": float(np.log10(1.0 / p_min_anomaly)),
-                    "log10_delta_min": float(np.log10(delta_min)),
-                    "log10_rank_delta": float(np.log10(rank_delta)),
-                    "auroc": empirical_auc(float(anomaly_scores[0]), inlier_scores),
-                    "perfect_separation_from_calibration": bool(
-                        np.all(anomaly_scores > max_calib_score)
-                    ),
-                    "anomalies_exceed_all_inliers": bool(
-                        float(np.min(anomaly_scores)) > float(np.max(inlier_scores))
-                    ),
-                    "exact_any_discovery": exact_any,
-                    "exact_power": exact_power,
-                    "exact_fdr": exact_fdr,
-                    "randomized_any_discovery": random_any,
-                    "randomized_power": random_power,
-                    "randomized_fdr": random_fdr,
-                    "oracle_any_discovery": oracle_any,
-                    "oracle_power": oracle_power,
-                    "oracle_fdr": oracle_fdr,
-                }
-            )
-
-    return rows
+    return {
+        "n_cal": n_cal,
+        "m": m,
+        "rho": rho,
+        "seed": seed,
+        "alpha": alpha,
+        "pi1": pi1,
+        "n_anomaly": n_anomaly,
+        "calib_ess": calib_ess,
+        "max_normalized_calib_weight": max_normalized_weight,
+        "p_min_anom": p_min_anomaly,
+        "delta_min": float(delta_min),
+        "rank_delta": rank_delta,
+        "certified_no_first_discovery": bool(delta_min > 1.0),
+        "certified_no_rank_discovery": bool(rank_delta > 1.0),
+        "log10_m_over_alpha": float(np.log10(m / alpha)),
+        "log10_inverse_p_min": float(np.log10(1.0 / p_min_anomaly)),
+        "log10_delta_min": float(np.log10(delta_min)),
+        "log10_rank_delta": float(np.log10(rank_delta)),
+        "auroc": empirical_auc(float(anomaly_scores[0]), inlier_scores),
+        "perfect_separation_from_calibration": bool(
+            np.all(anomaly_scores > max_calib_score)
+        ),
+        "anomalies_exceed_all_inliers": bool(
+            float(np.min(anomaly_scores)) > float(np.max(inlier_scores))
+        ),
+        "exact_any_discovery": exact_any,
+        "exact_power": exact_power,
+        "exact_fdr": exact_fdr,
+        "randomized_any_discovery": random_any,
+        "randomized_power": random_power,
+        "randomized_fdr": random_fdr,
+        "oracle_any_discovery": oracle_any,
+        "oracle_power": oracle_power,
+        "oracle_fdr": oracle_fdr,
+    }
 
 
 def summary_is_current() -> bool:
@@ -291,16 +330,135 @@ def summary_is_current() -> bool:
     return not header.empty and str(header["summary_version"].iloc[0]) == SUMMARY_VERSION
 
 
+def aggregate_phase_trials(
+    trial_rows: list[dict[str, float | int | str | bool]],
+    *,
+    x_bin: int,
+    y_bin: int,
+    x_left: float,
+    x_right: float,
+    y_bottom: float,
+    y_top: float,
+) -> dict[str, float | int | str | bool]:
+    block = pd.DataFrame(trial_rows)
+    count = int(len(block))
+    return {
+        "summary_version": SUMMARY_VERSION,
+        "phase_x_bin": x_bin,
+        "phase_y_bin": y_bin,
+        "x_left": x_left,
+        "x_right": x_right,
+        "y_bottom": y_bottom,
+        "y_top": y_top,
+        "x": (x_left + x_right) / 2.0,
+        "y": (y_bottom + y_top) / 2.0,
+        "alpha": ALPHA,
+        "pi1": PI1,
+        "m": int(round(float(block["m"].median()))),
+        "mean_n_cal": float(block["n_cal"].mean()),
+        "mean_rho": float(block["rho"].mean()),
+        "count": count,
+        "n_anomaly": float(block["n_anomaly"].mean()),
+        "calib_ess": float(block["calib_ess"].mean()),
+        "max_normalized_calib_weight": float(
+            block["max_normalized_calib_weight"].mean()
+        ),
+        "p_min_anom": float(block["p_min_anom"].mean()),
+        "delta_min": float(block["delta_min"].mean()),
+        "rank_delta": float(block["rank_delta"].mean()),
+        "certified_no_first_discovery": float(
+            block["certified_no_first_discovery"].mean()
+        ),
+        "certified_no_rank_discovery": float(
+            block["certified_no_rank_discovery"].mean()
+        ),
+        "log10_m_over_alpha": float(block["log10_m_over_alpha"].mean()),
+        "log10_inverse_p_min": float(block["log10_inverse_p_min"].mean()),
+        "log10_delta_min": float(block["log10_delta_min"].mean()),
+        "log10_rank_delta": float(block["log10_rank_delta"].mean()),
+        "auroc": float(block["auroc"].mean()),
+        "perfect_separation_from_calibration": bool(
+            block["perfect_separation_from_calibration"].all()
+        ),
+        "anomalies_exceed_all_inliers": bool(block["anomalies_exceed_all_inliers"].all()),
+        "exact_any_discovery": float(block["exact_any_discovery"].mean()),
+        "exact_power": float(block["exact_power"].mean()),
+        "exact_fdr": float(block["exact_fdr"].mean()),
+        "randomized_any_discovery": float(block["randomized_any_discovery"].mean()),
+        "randomized_power": float(block["randomized_power"].mean()),
+        "randomized_fdr": float(block["randomized_fdr"].mean()),
+        "oracle_any_discovery": float(block["oracle_any_discovery"].mean()),
+        "oracle_power": float(block["oracle_power"].mean()),
+        "oracle_fdr": float(block["oracle_fdr"].mean()),
+    }
+
+
+def simulate_phase_cell(task: tuple[int, int]) -> dict[str, float | int | str | bool]:
+    x_bin, y_bin = task
+    x_edges = phase_x_edges()
+    y_edges = phase_y_edges()
+    x_center = cell_center(x_edges, x_bin)
+    y_center = cell_center(y_edges, y_bin)
+    m = m_for_phase_x(ALPHA, x_center)
+    configs = [
+        (n_cal, float(rho))
+        for n_cal in phase_n_candidates_for_y(y_center)
+        for rho in PHASE_RHO_CANDIDATES
+    ]
+    accepted_rows: list[dict[str, float | int | str | bool]] = []
+    attempts = 0
+
+    while (
+        len(accepted_rows) < int(PHASE_CELL_TRIALS)
+        and attempts < int(PHASE_MAX_ACCEPT_ATTEMPTS_PER_CELL)
+    ):
+        n_cal, rho = configs[attempts % len(configs)]
+        row = simulate_perfect_score_trial(
+            n_cal,
+            m,
+            rho,
+            x_bin * 100000 + y_bin * 1000 + attempts,
+            ALPHA,
+            PI1,
+        )
+        attempts += 1
+        if not value_in_bin(float(row["log10_inverse_p_min"]), y_edges, y_bin):
+            continue
+        accepted_rows.append(row)
+
+    if len(accepted_rows) < int(PHASE_CELL_TRIALS):
+        raise RuntimeError(
+            "Could not fill Figure 2 phase cell: "
+            f"x_bin={x_bin}, y_bin={y_bin}, accepted={len(accepted_rows)}, "
+            f"attempts={attempts}."
+        )
+
+    return aggregate_phase_trials(
+        accepted_rows,
+        x_bin=x_bin,
+        y_bin=y_bin,
+        x_left=float(x_edges[x_bin]),
+        x_right=float(x_edges[x_bin + 1]),
+        y_bottom=float(y_edges[y_bin]),
+        y_top=float(y_edges[y_bin + 1]),
+    )
+
+
 def build_summary() -> pd.DataFrame:
-    tasks = [(n_cal, float(rho)) for n_cal in N_VALUES for rho in RHO_VALUES]
-    rows: list[dict[str, float | int | str]] = []
+    tasks = [
+        (x_bin, y_bin)
+        for x_bin in range(int(PHASE_X_BINS))
+        for y_bin in range(int(PHASE_Y_BINS))
+    ]
+    rows: list[dict[str, float | int | str | bool]] = []
     total_tasks = len(tasks)
     with ProcessPoolExecutor(max_workers=WORKERS) as executor:
-        for done, block_rows in enumerate(executor.map(simulate_block, tasks), start=1):
-            rows.extend(block_rows)
-            if done % len(RHO_VALUES) == 0 or done == total_tasks:
-                print(f"completed Figure 2 simulation block {done}/{total_tasks}", flush=True)
+        for done, row in enumerate(executor.map(simulate_phase_cell, tasks), start=1):
+            rows.append(row)
+            if done % int(PHASE_Y_BINS) == 0 or done == total_tasks:
+                print(f"completed Figure 2 phase cell {done}/{total_tasks}", flush=True)
     summary = pd.DataFrame(rows)
+    validate_phase_summary(summary)
     summary.to_csv(SUMMARY_PATH, index=False)
     return summary
 
@@ -458,6 +616,7 @@ def build_power_config_summary() -> pd.DataFrame:
     for (scenario, m, bin_idx), values in counts.items():
         count, sum_neff, sum_power, sum_any, sum_certified, sum_auroc = values
         config = config_by_name[scenario]
+        mean_neff = sum_neff / count
         rows.append(
             {
                 "summary_version": POWER_CONFIG_SUMMARY_VERSION,
@@ -468,7 +627,8 @@ def build_power_config_summary() -> pd.DataFrame:
                 "m": m,
                 "log10_neff_left": LOG_ESS_BINS[bin_idx],
                 "log10_neff_right": LOG_ESS_BINS[bin_idx + 1],
-                "mean_neff": sum_neff / count,
+                "mean_neff": mean_neff,
+                "log10_mean_neff": float(np.log10(mean_neff)),
                 "power": sum_power / count,
                 "discovery_probability": sum_any / count,
                 "certified_no_rank_rate": sum_certified / count,
@@ -541,36 +701,27 @@ def plot_score_schematic(ax: plt.Axes) -> None:
 
 
 def plot_pvalue_floor(ax: plt.Axes, summary: pd.DataFrame) -> None:
-    x_values = np.array([np.log10(m / ALPHA) for m in M_VALUES], dtype=float)
-    x_midpoints = (x_values[:-1] + x_values[1:]) / 2.0
-    x_edges = np.concatenate(
-        [
-            [x_values[0] - (x_midpoints[0] - x_values[0])],
-            x_midpoints,
-            [x_values[-1] + (x_values[-1] - x_midpoints[-1])],
-        ]
-    )
-    matrix = np.full((len(x_edges) - 1, len(Y_BINS) - 1), np.nan)
-    for x_idx, m in enumerate(M_VALUES):
-        block = summary[summary["m"].eq(m)]
-        y_idx = np.searchsorted(Y_BINS, block["log10_inverse_p_min"], side="right") - 1
-        for bin_idx in range(len(Y_BINS) - 1):
-            in_bin = y_idx == bin_idx
-            if np.any(in_bin):
-                matrix[x_idx, bin_idx] = float(block.loc[in_bin, "exact_any_discovery"].mean())
+    x_edges = phase_x_edges()
+    y_edges = phase_y_edges()
+    matrix = np.full((int(PHASE_X_BINS), int(PHASE_Y_BINS)), np.nan)
+    for row in summary.itertuples(index=False):
+        matrix[int(row.phase_x_bin), int(row.phase_y_bin)] = float(
+            row.exact_any_discovery
+        )
 
     mesh = ax.pcolormesh(
         x_edges,
-        Y_BINS,
+        y_edges,
         np.ma.masked_invalid(matrix).T,
         cmap="viridis",
         norm=Normalize(vmin=0.0, vmax=1.0),
         shading="flat",
     )
-    diagonal_x = np.linspace(float(x_edges[0]), float(x_edges[-1]), 200)
+    diagonal_x = np.asarray(PHASE_VIEW_LIMITS, dtype=float)
     ax.plot(diagonal_x, diagonal_x, color="black", linestyle="--", linewidth=1.1)
-    ax.set_xlim(float(x_edges[0]), float(x_edges[-1]))
-    ax.set_ylim(float(Y_BINS[0]), float(Y_BINS[-1]))
+    ax.set_xlim(*PHASE_VIEW_LIMITS)
+    ax.set_ylim(*PHASE_VIEW_LIMITS)
+    ax.set_aspect("equal", adjustable="box")
     ax.set_xlabel(r"$\log_{10}(m/\alpha)$")
     ax.set_ylabel(r"$\log_{10}(1/p^{min}_{anom})$")
     ax.set_title("B. P-value floor versus BH threshold")
@@ -579,69 +730,21 @@ def plot_pvalue_floor(ax: plt.Axes, summary: pd.DataFrame) -> None:
     cbar.set_label("Pr(exact WEDF discovers)")
 
 
-def plot_power_vs_ess(ax: plt.Axes, summary: pd.DataFrame) -> None:
-    for m in PANEL_C_M_VALUES:
-        block = summary[summary["m"].eq(m)].copy()
-        block["log10_ess"] = np.log10(block["calib_ess"])
-        bin_idx = np.searchsorted(LOG_ESS_BINS, block["log10_ess"], side="right") - 1
-        xs = []
-        ys = []
-        blocked = []
-        for idx in range(len(LOG_ESS_BINS) - 1):
-            in_bin = bin_idx == idx
-            if np.sum(in_bin) < 20:
-                continue
-            bin_block = block.loc[in_bin]
-            xs.append(float(np.median(bin_block["calib_ess"])))
-            ys.append(float(np.mean(bin_block["exact_power"])))
-            blocked.append(float(np.median(bin_block["rank_delta"])) > 1.0)
-        if not xs:
-            continue
-        line = ax.plot(xs, ys, marker="o", markersize=3, linewidth=1.5, label=f"m={m}")[0]
-        blocked_x = np.asarray(xs)[np.asarray(blocked, dtype=bool)]
-        if len(blocked_x):
-            ax.scatter(
-                blocked_x,
-                np.asarray(ys)[np.asarray(blocked, dtype=bool)],
-                s=42,
-                facecolors="none",
-                edgecolors=line.get_color(),
-                linewidths=1.2,
-            )
-
-    median_auc = float(summary["auroc"].median())
-    ax.text(
-        0.03,
-        0.08,
-        f"median AUROC = {median_auc:.2f}",
-        transform=ax.transAxes,
-        ha="left",
-        va="bottom",
-        fontsize=9,
-        bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.78},
-    )
-    ax.set_xscale("log")
-    ax.set_ylim(-0.03, 1.03)
-    ax.set_xlabel(r"median calibration $N_{eff}$")
-    ax.set_ylabel("exact WEDF power")
-    ax.set_title("C. Power collapse despite perfect scores")
-    ax.grid(alpha=0.18, linewidth=0.6)
-    ax.legend(frameon=False, fontsize=8, loc="best")
-
-
 def method_curve(summary: pd.DataFrame, column: str) -> pd.DataFrame:
     rows = []
     bin_idx = np.searchsorted(DELTA_BINS, summary["log10_delta_min"], side="right") - 1
     for idx in range(len(DELTA_BINS) - 1):
         in_bin = bin_idx == idx
-        if np.sum(in_bin) < 20:
+        count = int(summary.loc[in_bin, "count"].sum())
+        if count <= 0:
             continue
         block = summary.loc[in_bin]
+        weights = block["count"].to_numpy(dtype=float)
         rows.append(
             {
-                "x": float(block["log10_delta_min"].mean()),
-                "probability": float(block[column].mean()),
-                "count": int(len(block)),
+                "x": float(np.average(block["log10_delta_min"], weights=weights)),
+                "probability": float(np.average(block[column], weights=weights)),
+                "count": count,
             }
         )
     return pd.DataFrame(rows)
@@ -669,7 +772,7 @@ def plot_detectability_ratio(ax: plt.Axes, summary: pd.DataFrame) -> None:
     ax.set_ylim(-0.03, 1.03)
     ax.set_xlabel(r"$\log_{10}\delta_{min}$,  $\delta_{min}=p^{min}_{anom}/(\alpha/m)$")
     ax.set_ylabel("Pr(BH finds >=1 anomaly)")
-    ax.set_title("D. Detectability ratio calibration")
+    ax.set_title("C. Detectability ratio calibration")
     ax.grid(alpha=0.18, linewidth=0.6)
     ax.legend(frameon=False, fontsize=8, loc="best")
 
@@ -690,7 +793,8 @@ def write_key_table(summary: pd.DataFrame) -> None:
             {
                 "summary_version": SUMMARY_VERSION,
                 "setting": setting,
-                "trials": len(block),
+                "phase_cells": len(block),
+                "accepted_trials": int(block["count"].sum()),
                 "median_auroc": block["auroc"].median(),
                 "median_neff": block["calib_ess"].median(),
                 "median_max_normalized_weight": block["max_normalized_calib_weight"].median(),
@@ -711,29 +815,66 @@ def write_key_table(summary: pd.DataFrame) -> None:
     pd.DataFrame(rows).to_csv(TABLE_PATH, index=False)
 
 
+def validate_phase_summary(summary: pd.DataFrame) -> None:
+    x_edges = phase_x_edges()
+    y_edges = phase_y_edges()
+    expected = {
+        (x_bin, y_bin)
+        for x_bin in range(int(PHASE_X_BINS))
+        for y_bin in range(int(PHASE_Y_BINS))
+    }
+    observed = {
+        (int(row.phase_x_bin), int(row.phase_y_bin))
+        for row in summary.itertuples(index=False)
+    }
+    if observed != expected:
+        raise RuntimeError(
+            f"Unexpected phase cells: missing={len(expected - observed)}, "
+            f"unexpected={len(observed - expected)}."
+        )
+    if summary.duplicated(["phase_x_bin", "phase_y_bin"]).any():
+        raise RuntimeError("Phase summary contains duplicate cells.")
+    if (summary["count"] <= 0).any():
+        raise RuntimeError("Phase summary contains zero-count cells.")
+    for row in summary.itertuples(index=False):
+        x_bin = int(row.phase_x_bin)
+        y_bin = int(row.phase_y_bin)
+        expected_edges = (
+            x_edges[x_bin],
+            x_edges[x_bin + 1],
+            y_edges[y_bin],
+            y_edges[y_bin + 1],
+        )
+        observed_edges = (row.x_left, row.x_right, row.y_bottom, row.y_top)
+        if not np.allclose(observed_edges, expected_edges):
+            raise RuntimeError(f"Phase cell edge mismatch: x={x_bin}, y={y_bin}.")
+
+
 def validate_summary(summary: pd.DataFrame) -> None:
-    observed_m = set(summary["m"].unique())
-    if observed_m != set(M_VALUES):
-        raise RuntimeError(f"Unexpected m values: {observed_m}")
+    validate_phase_summary(summary)
     if not bool(summary["perfect_separation_from_calibration"].all()):
         raise RuntimeError("Anomaly scores must exceed every calibration score.")
     if not np.isfinite(summary["p_min_anom"]).all():
         raise RuntimeError("All exact WEDF anomaly p-value floors must be finite.")
     if not ((summary["p_min_anom"] >= 0.0) & (summary["p_min_anom"] <= 1.0)).all():
         raise RuntimeError("Exact WEDF anomaly p-value floors must lie in [0, 1].")
-    if not np.allclose(
-        summary["certified_no_first_discovery"],
-        summary["delta_min"] > 1.0,
-    ):
-        raise RuntimeError("First-discovery certificate does not match delta_min.")
+    probability_columns = [
+        "certified_no_first_discovery",
+        "certified_no_rank_discovery",
+        "exact_any_discovery",
+        "randomized_any_discovery",
+        "oracle_any_discovery",
+    ]
+    for column in probability_columns:
+        if not ((summary[column] >= 0.0) & (summary[column] <= 1.0)).all():
+            raise RuntimeError(f"Phase probability column out of range: {column}.")
 
 
 def plot_figure(summary: pd.DataFrame) -> None:
-    fig, axes = plt.subplots(2, 2, figsize=(13.8, 10.6), constrained_layout=True)
-    plot_score_schematic(axes[0, 0])
-    plot_pvalue_floor(axes[0, 1], summary)
-    plot_power_vs_ess(axes[1, 0], summary)
-    plot_detectability_ratio(axes[1, 1], summary)
+    fig, axes = plt.subplots(1, 3, figsize=(16.4, 5.4), constrained_layout=True)
+    plot_score_schematic(axes[0])
+    plot_pvalue_floor(axes[1], summary)
+    plot_detectability_ratio(axes[2], summary)
     fig.suptitle(
         "Perfect-score stress test: finite-sample resolution prevents discovery",
         fontsize=14,
@@ -750,11 +891,11 @@ def plot_power_config_panel(
 ) -> None:
     block = summary[summary["scenario"].eq(scenario)]
     for m in PANEL_C_M_VALUES:
-        line = block[block["m"].eq(m)].sort_values("mean_neff")
+        line = block[block["m"].eq(m)].sort_values("log10_mean_neff")
         if line.empty:
             continue
         plotted = ax.plot(
-            line["mean_neff"],
+            line["log10_mean_neff"],
             line["power"],
             marker="o",
             markersize=3,
@@ -764,7 +905,7 @@ def plot_power_config_panel(
         certified = line["certified_no_rank_rate"] >= 0.5
         if bool(certified.any()):
             ax.scatter(
-                line.loc[certified, "mean_neff"],
+                line.loc[certified, "log10_mean_neff"],
                 line.loc[certified, "power"],
                 s=42,
                 facecolors="none",
@@ -783,7 +924,6 @@ def plot_power_config_panel(
         fontsize=9,
         bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.78},
     )
-    ax.set_xscale("log")
     ax.set_ylim(-0.03, 1.03)
     ax.set_title(title)
     ax.grid(alpha=0.18, linewidth=0.6)
@@ -806,12 +946,28 @@ def plot_power_configurations(summary: pd.DataFrame) -> None:
             str(config["label"]),
         )
 
+    x_values = summary["log10_mean_neff"].to_numpy(dtype=float)
+    x_span = float(np.max(x_values) - np.min(x_values))
+    x_padding = max(0.05 * x_span, 0.05)
+    for ax in axes.ravel():
+        ax.set_xlim(
+            float(np.min(x_values) - x_padding),
+            float(np.max(x_values) + x_padding),
+        )
     for ax in axes[:, 0]:
         ax.set_ylabel("exact WEDF power")
     for ax in axes[-1, :]:
-        ax.set_xlabel(r"mean calibration $N_{eff}$")
+        ax.set_xlabel(r"$\log_{10}$ mean calibration $N_{eff}$")
 
-    axes[0, 0].legend(frameon=False, fontsize=8, loc="upper left")
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        labels,
+        frameon=False,
+        fontsize=8,
+        loc="center right",
+        bbox_to_anchor=(1.0, 0.5),
+    )
     fig.suptitle(
         "Perfect-score power collapse across alpha and anomaly-rate settings",
         fontsize=14,
@@ -916,58 +1072,38 @@ def export_panel_a_tikz() -> None:
 
 
 def export_panel_b_tikz(summary: pd.DataFrame) -> None:
-    x_values = np.array([np.log10(m / ALPHA) for m in M_VALUES], dtype=float)
-    x_midpoints = (x_values[:-1] + x_values[1:]) / 2.0
-    x_edges = np.concatenate(
-        [
-            [x_values[0] - (x_midpoints[0] - x_values[0])],
-            x_midpoints,
-            [x_values[-1] + (x_values[-1] - x_midpoints[-1])],
-        ]
-    )
     rows = []
-    for x_idx, m in enumerate(M_VALUES):
-        block = summary[summary["m"].eq(m)]
-        y_idx = np.searchsorted(Y_BINS, block["log10_inverse_p_min"], side="right") - 1
-        for bin_idx in range(len(Y_BINS) - 1):
-            in_bin = y_idx == bin_idx
-            count = int(np.sum(in_bin))
-            if count == 0:
-                continue
-            probability = float(block.loc[in_bin, "exact_any_discovery"].mean())
-            x_left = float(x_edges[x_idx])
-            x_right = float(x_edges[x_idx + 1])
-            y_bottom = float(Y_BINS[bin_idx])
-            y_top = float(Y_BINS[bin_idx + 1])
-            rows.append(
-                {
-                    "export_version": TIKZ_EXPORT_VERSION,
-                    "figure": "figure2",
-                    "panel": "B",
-                    "panel_title": "P-value floor versus BH threshold",
-                    "plot_order": x_idx + 1,
-                    "group": "heatmap_cell",
-                    "method": "exact_wedf",
-                    "scenario": "baseline",
-                    "kappa": "",
-                    "m": m,
-                    "x": (x_left + x_right) / 2.0,
-                    "y": (y_bottom + y_top) / 2.0,
-                    "x_left": x_left,
-                    "x_right": x_right,
-                    "y_bottom": y_bottom,
-                    "y_top": y_top,
-                    "value": probability,
-                    "probability": probability,
-                    "count": count,
-                    "style_key": "discovery_probability",
-                    "label": "Pr(exact WEDF discovers)",
-                }
-            )
+    for row in summary.sort_values(["phase_x_bin", "phase_y_bin"]).itertuples(index=False):
+        probability = float(row.exact_any_discovery)
+        rows.append(
+            {
+                "export_version": TIKZ_EXPORT_VERSION,
+                "figure": "figure2",
+                "panel": "B",
+                "panel_title": "P-value floor versus BH threshold",
+                "plot_order": int(row.phase_x_bin) + 1,
+                "group": "heatmap_cell",
+                "method": "exact_wedf",
+                "scenario": "baseline",
+                "kappa": "",
+                "m": int(row.m),
+                "x": float(row.x),
+                "y": float(row.y),
+                "x_left": float(row.x_left),
+                "x_right": float(row.x_right),
+                "y_bottom": float(row.y_bottom),
+                "y_top": float(row.y_top),
+                "value": probability,
+                "probability": probability,
+                "count": int(row.count),
+                "style_key": "discovery_probability",
+                "label": "Pr(exact WEDF discovers)",
+            }
+        )
     pd.DataFrame(rows).to_csv(PANEL_B_HEATMAP_TIKZ_PATH, index=False)
 
     boundary_rows = []
-    for point_order, x in enumerate([float(x_edges[0]), float(x_edges[-1])], start=1):
+    for point_order, x in enumerate(PHASE_VIEW_LIMITS, start=1):
         boundary_rows.append(
             {
                 "export_version": TIKZ_EXPORT_VERSION,
@@ -992,49 +1128,7 @@ def export_panel_b_tikz(summary: pd.DataFrame) -> None:
     pd.DataFrame(boundary_rows).to_csv(PANEL_B_BOUNDARY_TIKZ_PATH, index=False)
 
 
-def panel_c_curve_rows(summary: pd.DataFrame) -> list[dict[str, float | int | str | bool]]:
-    rows = []
-    for plot_order, m in enumerate(PANEL_C_M_VALUES, start=1):
-        block = summary[summary["m"].eq(m)].copy()
-        block["log10_ess"] = np.log10(block["calib_ess"])
-        bin_idx = np.searchsorted(LOG_ESS_BINS, block["log10_ess"], side="right") - 1
-        for idx in range(len(LOG_ESS_BINS) - 1):
-            in_bin = bin_idx == idx
-            count = int(np.sum(in_bin))
-            if count < 20:
-                continue
-            bin_block = block.loc[in_bin]
-            certified = float(np.median(bin_block["rank_delta"])) > 1.0
-            rows.append(
-                {
-                    "export_version": TIKZ_EXPORT_VERSION,
-                    "figure": "figure2",
-                    "panel": "C",
-                    "panel_title": "Power collapse despite perfect scores",
-                    "plot_order": plot_order,
-                    "group": "power_curve",
-                    "method": "exact_wedf",
-                    "scenario": "baseline",
-                    "kappa": "",
-                    "m": m,
-                    "x": float(np.median(bin_block["calib_ess"])),
-                    "y": float(np.mean(bin_block["exact_power"])),
-                    "value": float(np.mean(bin_block["exact_power"])),
-                    "probability": "",
-                    "count": count,
-                    "certified_no_rank": certified,
-                    "style_key": f"m_{m}",
-                    "label": f"m={m}",
-                }
-            )
-    return rows
-
-
 def export_panel_c_tikz(summary: pd.DataFrame) -> None:
-    pd.DataFrame(panel_c_curve_rows(summary)).to_csv(PANEL_C_POWER_TIKZ_PATH, index=False)
-
-
-def export_panel_d_tikz(summary: pd.DataFrame) -> None:
     specs = [
         ("exact_wedf", "exact_any_discovery"),
         ("randomized_wedf", "randomized_any_discovery"),
@@ -1048,7 +1142,7 @@ def export_panel_d_tikz(summary: pd.DataFrame) -> None:
                 {
                     "export_version": TIKZ_EXPORT_VERSION,
                     "figure": "figure2",
-                    "panel": "D",
+                    "panel": "C",
                     "panel_title": "Detectability ratio calibration",
                     "plot_order": plot_order,
                     "point_index": idx,
@@ -1066,13 +1160,13 @@ def export_panel_d_tikz(summary: pd.DataFrame) -> None:
                     "label": METHOD_LABELS[method],
                 }
             )
-    pd.DataFrame(rows).to_csv(PANEL_D_DETECTABILITY_TIKZ_PATH, index=False)
+    pd.DataFrame(rows).to_csv(PANEL_C_DETECTABILITY_TIKZ_PATH, index=False)
 
     reference_rows = [
         {
             "export_version": TIKZ_EXPORT_VERSION,
             "figure": "figure2",
-            "panel": "D",
+            "panel": "C",
             "panel_title": "Detectability ratio calibration",
             "plot_order": idx,
             "point_index": idx,
@@ -1091,7 +1185,7 @@ def export_panel_d_tikz(summary: pd.DataFrame) -> None:
         }
         for idx, y in enumerate([-0.03, 1.03], start=1)
     ]
-    pd.DataFrame(reference_rows).to_csv(PANEL_D_REFERENCE_TIKZ_PATH, index=False)
+    pd.DataFrame(reference_rows).to_csv(PANEL_C_REFERENCE_TIKZ_PATH, index=False)
 
 
 def export_power_configurations_tikz(summary: pd.DataFrame) -> None:
@@ -1105,7 +1199,7 @@ def export_power_configurations_tikz(summary: pd.DataFrame) -> None:
     rows["group"] = "power_configuration_curve"
     rows["method"] = "exact_wedf"
     rows["kappa"] = ""
-    rows["x"] = rows["mean_neff"]
+    rows["x"] = rows["log10_mean_neff"]
     rows["y"] = rows["power"]
     rows["value"] = rows["power"]
     rows["probability"] = rows["discovery_probability"]
@@ -1141,7 +1235,6 @@ def export_tikz_csvs(summary: pd.DataFrame, power_config_summary: pd.DataFrame) 
     export_panel_a_tikz()
     export_panel_b_tikz(summary)
     export_panel_c_tikz(summary)
-    export_panel_d_tikz(summary)
     export_power_configurations_tikz(power_config_summary)
 
 
@@ -1156,9 +1249,8 @@ def validate_outputs() -> None:
         PANEL_A_ANNOTATIONS_TIKZ_PATH,
         PANEL_B_HEATMAP_TIKZ_PATH,
         PANEL_B_BOUNDARY_TIKZ_PATH,
-        PANEL_C_POWER_TIKZ_PATH,
-        PANEL_D_DETECTABILITY_TIKZ_PATH,
-        PANEL_D_REFERENCE_TIKZ_PATH,
+        PANEL_C_DETECTABILITY_TIKZ_PATH,
+        PANEL_C_REFERENCE_TIKZ_PATH,
         POWER_CONFIGURATIONS_TIKZ_PATH,
     ]:
         if not path.exists():
@@ -1193,9 +1285,8 @@ def main() -> None:
     print(PANEL_A_ANNOTATIONS_TIKZ_PATH)
     print(PANEL_B_HEATMAP_TIKZ_PATH)
     print(PANEL_B_BOUNDARY_TIKZ_PATH)
-    print(PANEL_C_POWER_TIKZ_PATH)
-    print(PANEL_D_DETECTABILITY_TIKZ_PATH)
-    print(PANEL_D_REFERENCE_TIKZ_PATH)
+    print(PANEL_C_DETECTABILITY_TIKZ_PATH)
+    print(PANEL_C_REFERENCE_TIKZ_PATH)
     print(POWER_CONFIGURATIONS_TIKZ_PATH)
 
 
