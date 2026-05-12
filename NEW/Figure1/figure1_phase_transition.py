@@ -20,8 +20,8 @@ MODES = ("unweighted", "weighted")
 WCS_PRUNING_METHODS = ("deterministic", "homogeneous", "heterogeneous")
 DEFAULT_WEIGHTED_PRUNING = "homogeneous"
 
-SUMMARY_VERSION = "split-v4"
-TIKZ_EXPORT_VERSION = "tikz-v1"
+SUMMARY_VERSION = "split-v5"
+TIKZ_EXPORT_VERSION = "tikz-v3"
 SCENARIOS = [
     {"name": "baseline", "alpha": 0.1, "pi1": 0.1, "label": r"$\alpha=0.10,\ \pi_1=0.10$"},
     {"name": "alpha_005", "alpha": 0.05, "pi1": 0.1, "label": r"$\alpha=0.05,\ \pi_1=0.10$"},
@@ -48,9 +48,12 @@ DEFAULT_WORKERS = max(1, (os.cpu_count() or 2) - 1)
 WORKERS = int(os.environ.get("FIGURE1_WORKERS", DEFAULT_WORKERS))
 WCS_CANDIDATE_BATCH_SIZE = int(os.environ.get("FIGURE1_WCS_BATCH_SIZE", 512))
 
-HEATMAP_Y_LOWER_QUANTILE = 0.0
-HEATMAP_Y_UPPER_QUANTILE = 0.995
-HEATMAP_Y_BINS = 34
+HEATMAP_X_BINS = 12
+HEATMAP_Y_BINS = 12
+HEATMAP_VIEW_LIMITS = (2.25, 4.75)
+HEATMAP_CELL_TRIALS = 25
+HEATMAP_MAX_ACCEPT_ATTEMPTS_PER_CELL = 5000
+WEIGHTED_HEATMAP_RHO_CANDIDATES = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
 COLLAPSE_BINS = np.linspace(-2.5, 2.5, 35)
 
 COLORS = {
@@ -319,6 +322,49 @@ def x_edges_for_alpha(alpha: float) -> tuple[np.ndarray, dict[int, int]]:
     return x_edges, {m: idx for idx, m in enumerate(M_VALUES)}
 
 
+def heatmap_x_edges() -> np.ndarray:
+    return np.linspace(*HEATMAP_VIEW_LIMITS, int(HEATMAP_X_BINS) + 1)
+
+
+def heatmap_y_edges() -> np.ndarray:
+    return np.linspace(*HEATMAP_VIEW_LIMITS, int(HEATMAP_Y_BINS) + 1)
+
+
+def cell_center(edges: np.ndarray, bin_idx: int) -> float:
+    return float((edges[bin_idx] + edges[bin_idx + 1]) / 2.0)
+
+
+def mode_code(mode: str) -> int:
+    return MODES.index(normalize_mode(mode))
+
+
+def scenario_code(scenario_name: str) -> int:
+    return [scenario["name"] for scenario in SCENARIOS].index(scenario_name)
+
+
+def value_in_bin(value: float, edges: np.ndarray, bin_idx: int) -> bool:
+    left = float(edges[bin_idx])
+    right = float(edges[bin_idx + 1])
+    if bin_idx == len(edges) - 2:
+        return left <= value <= right
+    return left <= value < right
+
+
+def m_for_heatmap_x(alpha: float, x_center: float) -> int:
+    return max(2, int(round(alpha * 10**x_center)))
+
+
+def n_for_unweighted_heatmap_y(y_center: float) -> int:
+    return max(2, int(round(10**y_center - 1.0)))
+
+
+def weighted_n_candidates_for_y(y_center: float) -> list[int]:
+    base = max(2, int(round(10**y_center - 1.0)))
+    multipliers = [0.05, 0.1, 0.25, 0.5, 1.0]
+    return sorted({max(2, int(round(base * multiplier))) for multiplier in multipliers})
+
+
+HeatmapTask = tuple[str, str, int, int]
 SimulationTask = tuple[str, str, str, int, float, tuple[int, ...]]
 
 
@@ -352,103 +398,179 @@ def tasks_for_scenario(mode: str, scenario_name: str) -> list[SimulationTask]:
     return base_tasks + supplement_tasks
 
 
-def resolution_block(task: SimulationTask) -> tuple[str, np.ndarray]:
-    mode, _, scenario_name, n, rho, m_values = task
+def simulate_heatmap_trial(
+    mode: str,
+    scenario_name: str,
+    n: int,
+    m: int,
+    rho: float,
+    trial_seed: int,
+    pruning: str,
+) -> tuple[float, dict[str, bool]]:
+    mode = normalize_mode(mode)
+    pruning = normalize_pruning(pruning)
     scenario = SCENARIO_BY_NAME[scenario_name]
     pi1 = float(scenario["pi1"])
+    alpha = float(scenario["alpha"])
     rho_code = int(round(rho * 1000))
-    values = []
+    seed_head = (
+        mode_code(mode),
+        scenario_code(scenario_name),
+        int(n),
+        int(m),
+        rho_code,
+        int(trial_seed),
+    )
 
-    for seed in range(N_SEEDS):
-        if mode == "weighted":
-            calib_rng = rng_for(n, rho_code, seed, 0)
-            calib_z = calib_rng.normal(0.0, 1.0, n)
-            calib_weights = np.exp(rho * calib_z - 0.5 * rho**2)
-            total_calib_weight = float(np.sum(calib_weights))
+    calib_rng = rng_for(*seed_head, 0)
+    if mode == "weighted":
+        calib_z = calib_rng.normal(0.0, 1.0, n)
+        calib_weights = np.exp(rho * calib_z - 0.5 * rho**2)
+    else:
+        calib_weights = np.ones(n, dtype=float)
+    calib_t = calib_rng.normal(0.0, 1.0, n)
+    total_calib_weight = float(np.sum(calib_weights))
+
+    order = np.argsort(calib_t, kind="mergesort")
+    sorted_calib_scores = calib_t[order]
+    sorted_calib_weights = calib_weights[order]
+    suffix_calib_weights = np.concatenate(
+        ([0.0], np.cumsum(sorted_calib_weights[::-1]))
+    )[::-1]
+
+    n_anomaly = max(1, int(round(pi1 * m)))
+    n_inlier = m - n_anomaly
+    test_rng = rng_for(*seed_head, 1)
+    if mode == "weighted":
+        inlier_z = test_rng.normal(rho, 1.0, n_inlier)
+        anomaly_z = test_rng.normal(rho, 1.0, n_anomaly)
+        test_z = np.concatenate([inlier_z, anomaly_z])
+        test_weights = np.exp(rho * test_z - 0.5 * rho**2)
+    else:
+        test_weights = np.ones(m, dtype=float)
+    inlier_scores = test_rng.normal(0.0, 1.0, n_inlier)
+    anomaly_noise = test_rng.normal(0.0, 1.0, n_anomaly)
+    y_true = np.concatenate(
+        [np.zeros(n_inlier, dtype=bool), np.ones(n_anomaly, dtype=bool)]
+    )
+
+    p_min_anomaly = test_weights[n_inlier:] / (
+        test_weights[n_inlier:] + total_calib_weight
+    )
+    p_min_first = float(np.min(p_min_anomaly))
+    log_resolution = float(np.log10(1.0 / p_min_first))
+
+    outcomes = {}
+    for kappa in HEATMAP_KAPPAS:
+        label = kappa_label(kappa)
+        if np.isinf(kappa):
+            finite_max = float(
+                np.max(np.concatenate([calib_t, inlier_scores, anomaly_noise]))
+            )
+            anomaly_scores = np.full(n_anomaly, finite_max + 1.0)
         else:
-            total_calib_weight = float(n)
+            anomaly_scores = kappa + anomaly_noise
+        test_scores = np.concatenate([inlier_scores, anomaly_scores])
+        if mode == "weighted":
+            p_values = weighted_tail_p_values(
+                sorted_calib_scores,
+                suffix_calib_weights,
+                total_calib_weight,
+                test_scores,
+                test_weights,
+            )
+            decisions = accelerated_wcs_decisions(
+                p_values,
+                test_scores,
+                sorted_calib_scores,
+                sorted_calib_weights,
+                total_calib_weight,
+                test_weights,
+                alpha,
+                pruning=pruning,
+                seed=BASE_SEED + int(trial_seed),
+            )
+        else:
+            p_values = standard_tail_p_values(sorted_calib_scores, test_scores)
+            decisions = bh_decisions(p_values, alpha)
+        outcomes[label] = bool(np.any(decisions & y_true))
 
-        for m in m_values:
-            n_anomaly = max(1, int(round(pi1 * m)))
-            n_inlier = m - n_anomaly
-            if mode == "weighted":
-                test_rng = rng_for(n, m, rho_code, seed, 1)
-                _ = test_rng.normal(rho, 1.0, n_inlier)
-                anomaly_z = test_rng.normal(rho, 1.0, n_anomaly)
-                anomaly_weights = np.exp(rho * anomaly_z - 0.5 * rho**2)
-            else:
-                anomaly_weights = np.ones(n_anomaly, dtype=float)
-            p_min_anomaly = anomaly_weights / (anomaly_weights + total_calib_weight)
-            values.append(np.log10(1.0 / float(np.min(p_min_anomaly))))
-
-    return scenario_name, np.asarray(values, dtype=float)
+    return log_resolution, outcomes
 
 
-def adaptive_heatmap_y_edges(values: np.ndarray) -> np.ndarray:
-    finite_values = np.asarray(values, dtype=float)
-    finite_values = finite_values[np.isfinite(finite_values)]
-    if len(finite_values) == 0:
-        raise ValueError("Cannot build heatmap y-axis edges from no finite values.")
+def simulate_heatmap_cell(
+    task: HeatmapTask,
+    pruning: str,
+) -> tuple[HeatmapTask, dict[str, list[float]]]:
+    mode, scenario_name, x_bin, y_bin = task
+    mode = normalize_mode(mode)
+    scenario = SCENARIO_BY_NAME[scenario_name]
+    x_edges = heatmap_x_edges()
+    y_edges = heatmap_y_edges()
+    x_center = cell_center(x_edges, x_bin)
+    y_center = cell_center(y_edges, y_bin)
+    m = m_for_heatmap_x(float(scenario["alpha"]), x_center)
+    counts = {kappa_label(kappa): [0.0, 0.0, 0.0] for kappa in HEATMAP_KAPPAS}
 
-    lower = float(np.quantile(finite_values, HEATMAP_Y_LOWER_QUANTILE))
-    upper = float(np.quantile(finite_values, HEATMAP_Y_UPPER_QUANTILE))
-    displayed_values = finite_values[
-        (finite_values >= lower) & (finite_values <= upper)
+    if mode == "unweighted":
+        n = n_for_unweighted_heatmap_y(y_center)
+        for trial_idx in range(int(HEATMAP_CELL_TRIALS)):
+            log_resolution, outcomes = simulate_heatmap_trial(
+                mode,
+                scenario_name,
+                n,
+                m,
+                0.0,
+                x_bin * 100000 + y_bin * 1000 + trial_idx,
+                pruning,
+            )
+            if not value_in_bin(log_resolution, y_edges, y_bin):
+                raise RuntimeError(
+                    "Designed unweighted heatmap cell missed its y bin: "
+                    f"scenario={scenario_name}, x_bin={x_bin}, y_bin={y_bin}, "
+                    f"n={n}, y={log_resolution:.4f}."
+                )
+            for label, success in outcomes.items():
+                add_count(counts, label, 0.0, success)
+        return task, counts
+
+    accepted = 0
+    attempts = 0
+    n_candidates = weighted_n_candidates_for_y(y_center)
+    configs = [
+        (n, float(rho))
+        for n in n_candidates
+        for rho in WEIGHTED_HEATMAP_RHO_CANDIDATES
     ]
-    if len(displayed_values) == 0:
-        displayed_values = finite_values
+    while (
+        accepted < int(HEATMAP_CELL_TRIALS)
+        and attempts < int(HEATMAP_MAX_ACCEPT_ATTEMPTS_PER_CELL)
+    ):
+        n, rho = configs[attempts % len(configs)]
+        log_resolution, outcomes = simulate_heatmap_trial(
+            mode,
+            scenario_name,
+            n,
+            m,
+            rho,
+            x_bin * 100000 + y_bin * 1000 + attempts,
+            pruning,
+        )
+        attempts += 1
+        if not value_in_bin(log_resolution, y_edges, y_bin):
+            continue
+        accepted += 1
+        for label, success in outcomes.items():
+            add_count(counts, label, 0.0, success)
 
-    max_intervals = max(1, int(HEATMAP_Y_BINS) - 1)
-    unique_values = np.unique(displayed_values)
-    if len(unique_values) <= max_intervals:
-        if len(unique_values) == 1:
-            width = max(1e-6, abs(float(unique_values[0])) * 1e-6)
-            return np.array([unique_values[0] - width, unique_values[0] + width])
-        midpoints = (unique_values[:-1] + unique_values[1:]) / 2.0
-        return np.concatenate(
-            [
-                [unique_values[0] - (midpoints[0] - unique_values[0])],
-                midpoints,
-                [unique_values[-1] + (unique_values[-1] - midpoints[-1])],
-            ]
+    if accepted < int(HEATMAP_CELL_TRIALS):
+        raise RuntimeError(
+            "Could not fill designed weighted heatmap cell: "
+            f"scenario={scenario_name}, x_bin={x_bin}, y_bin={y_bin}, "
+            f"accepted={accepted}, attempts={attempts}."
         )
 
-    edges = np.unique(
-        np.quantile(displayed_values, np.linspace(0.0, 1.0, max_intervals + 1))
-    )
-    span = float(edges[-1] - edges[0])
-    eps = max(
-        np.finfo(float).eps * max(abs(float(edges[0])), abs(float(edges[-1])), 1.0) * 16,
-        span * 1e-12,
-    )
-    edges[0] -= eps
-    edges[-1] += eps
-
-    bin_idx = np.searchsorted(edges, displayed_values, side="right") - 1
-    valid = (0 <= bin_idx) & (bin_idx < len(edges) - 1)
-    counts = np.bincount(bin_idx[valid], minlength=len(edges) - 1)
-    if np.all(counts > 0):
-        return edges
-
-    compact_edges = [float(edges[0])]
-    for idx, count in enumerate(counts):
-        if count > 0:
-            compact_edges.append(float(edges[idx + 1]))
-    return np.asarray(compact_edges, dtype=float)
-
-
-def compute_y_edges(tasks: list[SimulationTask]) -> dict[str, np.ndarray]:
-    y_values = {scenario["name"]: [] for scenario in SCENARIOS}
-    with ProcessPoolExecutor(max_workers=WORKERS) as executor:
-        for scenario_name, block_values in executor.map(resolution_block, tasks):
-            y_values[scenario_name].append(block_values)
-
-    edges = {}
-    for scenario in SCENARIOS:
-        scenario_name = scenario["name"]
-        values = np.concatenate(y_values[scenario_name])
-        edges[scenario_name] = adaptive_heatmap_y_edges(values)
-    return edges
+    return task, counts
 
 
 def add_count(mapping: dict[tuple, list[float]], key: tuple, x: float, success: bool) -> None:
@@ -458,11 +580,10 @@ def add_count(mapping: dict[tuple, list[float]], key: tuple, x: float, success: 
     bucket[2] += float(x)
 
 
-def simulate_summary_block(
+def simulate_collapse_block(
     task: SimulationTask,
-    y_edges_by_scenario: dict[str, np.ndarray],
     pruning: str,
-) -> tuple[dict[tuple, list[float]], dict[tuple, list[float]]]:
+) -> dict[tuple, list[float]]:
     mode, grid_part, scenario_name, n, rho, m_values = task
     _ = grid_part
     mode = normalize_mode(mode)
@@ -471,12 +592,8 @@ def simulate_summary_block(
     alpha = float(scenario["alpha"])
     pi1 = float(scenario["pi1"])
     rho_code = int(round(rho * 1000))
-    y_edges = y_edges_by_scenario[scenario_name]
-    _, x_bin_by_m = x_edges_for_alpha(alpha)
 
-    heatmap_counts: dict[tuple, list[float]] = {}
     collapse_counts: dict[tuple, list[float]] = {}
-    kappas_for_task = KAPPA_VALUES if scenario_name == BASELINE_SCENARIO else HEATMAP_KAPPAS
 
     for seed in range(N_SEEDS):
         calib_rng = rng_for(n, rho_code, seed, 0)
@@ -525,12 +642,8 @@ def simulate_summary_block(
             delta = p_min_first / (alpha / m)
             log_delta = float(np.log10(delta))
             log_rank_delta = float(np.log10(rank_delta))
-            log_resolution = float(np.log10(1.0 / p_min_first))
-            x_bin = x_bin_by_m[m]
-            y_bin = int(np.searchsorted(y_edges, log_resolution, side="right") - 1)
-            in_heatmap_y_range = 0 <= y_bin < len(y_edges) - 1
 
-            for kappa in kappas_for_task:
+            for kappa in KAPPA_VALUES:
                 label = kappa_label(kappa)
                 if np.isinf(kappa):
                     finite_max = float(
@@ -564,24 +677,19 @@ def simulate_summary_block(
                     decisions = bh_decisions(p_values, alpha)
                 true_discovery = bool(np.any(decisions & y_true))
 
-                if label in {"inf", "3.0"} and in_heatmap_y_range:
-                    key = (scenario_name, label, x_bin, y_bin)
-                    add_count(heatmap_counts, key, 0.0, true_discovery)
+                delta_bin = int(np.searchsorted(COLLAPSE_BINS, log_delta, side="right") - 1)
+                if 0 <= delta_bin < len(COLLAPSE_BINS) - 1:
+                    key = ("first_threshold", label, delta_bin)
+                    add_count(collapse_counts, key, log_delta, true_discovery)
 
-                if scenario_name == BASELINE_SCENARIO:
-                    delta_bin = int(np.searchsorted(COLLAPSE_BINS, log_delta, side="right") - 1)
-                    if 0 <= delta_bin < len(COLLAPSE_BINS) - 1:
-                        key = ("first_threshold", label, delta_bin)
-                        add_count(collapse_counts, key, log_delta, true_discovery)
+                rank_bin = int(
+                    np.searchsorted(COLLAPSE_BINS, log_rank_delta, side="right") - 1
+                )
+                if 0 <= rank_bin < len(COLLAPSE_BINS) - 1:
+                    key = ("rank_aware", label, rank_bin)
+                    add_count(collapse_counts, key, log_rank_delta, true_discovery)
 
-                    rank_bin = int(
-                        np.searchsorted(COLLAPSE_BINS, log_rank_delta, side="right") - 1
-                    )
-                    if 0 <= rank_bin < len(COLLAPSE_BINS) - 1:
-                        key = ("rank_aware", label, rank_bin)
-                        add_count(collapse_counts, key, log_rank_delta, true_discovery)
-
-    return heatmap_counts, collapse_counts
+    return collapse_counts
 
 
 def merge_counts(target: dict[tuple, list[float]], update: dict[tuple, list[float]]) -> None:
@@ -592,58 +700,124 @@ def merge_counts(target: dict[tuple, list[float]], update: dict[tuple, list[floa
         bucket[2] += values[2]
 
 
-def build_summaries(mode: str, pruning: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+def validate_heatmap_completeness(summary: pd.DataFrame) -> None:
+    x_edges = heatmap_x_edges()
+    y_edges = heatmap_y_edges()
+    expected = {
+        (scenario["name"], kappa_label(kappa), x_bin, y_bin)
+        for scenario in SCENARIOS
+        for kappa in HEATMAP_KAPPAS
+        for x_bin in range(int(HEATMAP_X_BINS))
+        for y_bin in range(int(HEATMAP_Y_BINS))
+    }
+    observed = {
+        (row.scenario, str(row.kappa), int(row.x_bin), int(row.y_bin))
+        for row in summary.itertuples(index=False)
+    }
+    missing = expected - observed
+    unexpected = observed - expected
+    if missing or unexpected:
+        raise RuntimeError(
+            f"Heatmap cell coverage mismatch: missing={len(missing)}, "
+            f"unexpected={len(unexpected)}."
+        )
+    if summary.duplicated(["scenario", "kappa", "x_bin", "y_bin"]).any():
+        raise RuntimeError("Heatmap summary contains duplicate cells.")
+    if (summary["count"] <= 0).any():
+        raise RuntimeError("Heatmap summary contains zero-count cells.")
+
+    for row in summary.itertuples(index=False):
+        x_bin = int(row.x_bin)
+        y_bin = int(row.y_bin)
+        expected_edges = (
+            x_edges[x_bin],
+            x_edges[x_bin + 1],
+            y_edges[y_bin],
+            y_edges[y_bin + 1],
+        )
+        observed_edges = (row.x_left, row.x_right, row.y_bottom, row.y_top)
+        if not np.allclose(observed_edges, expected_edges):
+            raise RuntimeError(
+                "Heatmap cell edge mismatch: "
+                f"scenario={row.scenario}, kappa={row.kappa}, "
+                f"x_bin={x_bin}, y_bin={y_bin}."
+            )
+
+
+def build_heatmap_summary(mode: str, pruning: str) -> pd.DataFrame:
     mode = normalize_mode(mode)
     pruning = normalize_pruning(pruning)
     summary_version = summary_version_for(mode, pruning)
-    tasks = []
-    for scenario in SCENARIOS:
-        tasks.extend(tasks_for_scenario(mode, scenario["name"]))
+    x_edges = heatmap_x_edges()
+    y_edges = heatmap_y_edges()
+    tasks = [
+        (mode, scenario["name"], x_bin, y_bin)
+        for scenario in SCENARIOS
+        for x_bin in range(int(HEATMAP_X_BINS))
+        for y_bin in range(int(HEATMAP_Y_BINS))
+    ]
 
-    print(f"[{mode}] computing heatmap y-axis support", flush=True)
-    y_edges_by_scenario = compute_y_edges(tasks)
-
-    heatmap_counts: dict[tuple, list[float]] = {}
-    collapse_counts: dict[tuple, list[float]] = {}
+    print(f"[{mode}] computing designed heatmap cells", flush=True)
+    rows = []
     total_tasks = len(tasks)
     with ProcessPoolExecutor(max_workers=WORKERS) as executor:
         futures = executor.map(
-            simulate_summary_block,
+            simulate_heatmap_cell,
             tasks,
-            [y_edges_by_scenario] * len(tasks),
             [pruning] * len(tasks),
         )
-        for done, (heatmap_update, collapse_update) in enumerate(futures, start=1):
-            merge_counts(heatmap_counts, heatmap_update)
+        for done, (task, counts_by_kappa) in enumerate(futures, start=1):
+            _, scenario_name, x_bin, y_bin = task
+            scenario = SCENARIO_BY_NAME[scenario_name]
+            for kappa in HEATMAP_KAPPAS:
+                label = kappa_label(kappa)
+                successes, count, _ = counts_by_kappa[label]
+                rows.append(
+                    {
+                        "summary_version": summary_version,
+                        "scenario": scenario_name,
+                        "alpha": scenario["alpha"],
+                        "pi1": scenario["pi1"],
+                        "kappa": label,
+                        "x_bin": x_bin,
+                        "y_bin": y_bin,
+                        "x_left": x_edges[x_bin],
+                        "x_right": x_edges[x_bin + 1],
+                        "y_bottom": y_edges[y_bin],
+                        "y_top": y_edges[y_bin + 1],
+                        "successes": successes,
+                        "count": count,
+                        "probability": successes / count,
+                    }
+                )
+            progress_interval = max(1, int(HEATMAP_Y_BINS))
+            if done % progress_interval == 0 or done == total_tasks:
+                print(f"[{mode}] completed heatmap cell {done}/{total_tasks}", flush=True)
+
+    summary = pd.DataFrame(rows)
+    validate_heatmap_completeness(summary)
+    return summary
+
+
+def build_collapse_summary(mode: str, pruning: str) -> pd.DataFrame:
+    mode = normalize_mode(mode)
+    pruning = normalize_pruning(pruning)
+    summary_version = summary_version_for(mode, pruning)
+    tasks = tasks_for_scenario(mode, BASELINE_SCENARIO)
+    collapse_counts: dict[tuple, list[float]] = {}
+    total_tasks = len(tasks)
+    print(f"[{mode}] computing baseline collapse diagnostics", flush=True)
+    with ProcessPoolExecutor(max_workers=WORKERS) as executor:
+        futures = executor.map(
+            simulate_collapse_block,
+            tasks,
+            [pruning] * len(tasks),
+        )
+        for done, collapse_update in enumerate(futures, start=1):
             merge_counts(collapse_counts, collapse_update)
             progress_interval = len(RHO_VALUES) if mode == "weighted" else 1
             if done % progress_interval == 0 or done == total_tasks:
-                print(f"[{mode}] completed summary block {done}/{total_tasks}", flush=True)
-
-    heatmap_rows = []
-    for (scenario_name, kappa, x_bin, y_bin), values in heatmap_counts.items():
-        scenario = SCENARIO_BY_NAME[scenario_name]
-        x_edges, _ = x_edges_for_alpha(float(scenario["alpha"]))
-        y_edges = y_edges_by_scenario[scenario_name]
-        successes, count, _ = values
-        heatmap_rows.append(
-            {
-                "summary_version": summary_version,
-                "scenario": scenario_name,
-                "alpha": scenario["alpha"],
-                "pi1": scenario["pi1"],
-                "kappa": kappa,
-                "x_bin": x_bin,
-                "y_bin": y_bin,
-                "x_left": x_edges[x_bin],
-                "x_right": x_edges[x_bin + 1],
-                "y_bottom": y_edges[y_bin],
-                "y_top": y_edges[y_bin + 1],
-                "successes": successes,
-                "count": count,
-                "probability": successes / count,
-            }
-        )
+                print(f"[{mode}] completed collapse block {done}/{total_tasks}", flush=True)
 
     collapse_rows = []
     for (diagnostic, kappa, bin_idx), values in collapse_counts.items():
@@ -664,7 +838,13 @@ def build_summaries(mode: str, pruning: str) -> tuple[pd.DataFrame, pd.DataFrame
             }
         )
 
-    return pd.DataFrame(heatmap_rows), pd.DataFrame(collapse_rows)
+    return pd.DataFrame(collapse_rows)
+
+
+def build_summaries(mode: str, pruning: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    heatmap_summary = build_heatmap_summary(mode, pruning)
+    collapse_summary = build_collapse_summary(mode, pruning)
+    return heatmap_summary, collapse_summary
 
 
 def summaries_are_current(paths: Figure1Paths, mode: str, pruning: str) -> bool:
@@ -814,9 +994,10 @@ def heatmap_matrix(
 
 
 def heatmap_axis_limits(summary: pd.DataFrame) -> tuple[tuple[float, float], tuple[float, float]]:
+    _ = summary
     return (
-        (float(summary["x_left"].min()), float(summary["x_right"].max())),
-        (float(summary["y_bottom"].min()), float(summary["y_top"].max())),
+        HEATMAP_VIEW_LIMITS,
+        HEATMAP_VIEW_LIMITS,
     )
 
 
@@ -829,19 +1010,21 @@ def plot_heatmap_grid(
     selection_label = method_label(mode, pruning)
     x_limits, y_limits = heatmap_axis_limits(summary)
     fig, axes = plt.subplots(
-        3,
         2,
-        figsize=(12.6, 12.8),
+        3,
+        figsize=(14.8, 9.4),
         constrained_layout=True,
-        sharey=False,
+        sharex=True,
+        sharey=True,
     )
-    column_specs = [
+    row_specs = [
         ("inf", f"Perfect-score {selection_label}"),
         ("3.0", rf"Finite-score {selection_label} ($\kappa=3.0$)"),
     ]
     mesh = None
-    for row_idx, scenario in enumerate(SCENARIOS):
-        for col_idx, (kappa, title) in enumerate(column_specs):
+    for col_idx, scenario in enumerate(SCENARIOS):
+        axes[0, col_idx].set_title(scenario["label"])
+        for row_idx, (kappa, _) in enumerate(row_specs):
             ax = axes[row_idx, col_idx]
             x_edges, y_edges, matrix = heatmap_matrix(summary, scenario["name"], kappa)
             mesh = ax.pcolormesh(
@@ -852,27 +1035,26 @@ def plot_heatmap_grid(
                 norm=Normalize(vmin=0.0, vmax=1.0),
                 shading="flat",
             )
-            diagonal_x = np.linspace(float(x_edges[0]), float(x_edges[-1]), 200)
+            diagonal_x = np.asarray(HEATMAP_VIEW_LIMITS, dtype=float)
             ax.plot(diagonal_x, diagonal_x, color="black", linewidth=1.1, linestyle="--")
             ax.set_xlim(*x_limits)
             ax.set_ylim(*y_limits)
-            if row_idx == 0:
-                ax.set_title(title)
-            ax.set_xlabel(r"$\log_{10}(m/\alpha)$")
-            ax.set_ylabel(r"$\log_{10}(1/p^{\min}_{(1)})$")
+            ax.set_aspect("equal", adjustable="box")
             ax.grid(alpha=0.18, linewidth=0.6)
-            ax.text(
-                0.02,
-                0.96,
-                scenario["label"],
-                transform=ax.transAxes,
-                va="top",
-                ha="left",
-                fontsize=9,
-                bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.72},
-            )
+    for row_idx, (_, row_label) in enumerate(row_specs):
+        axes[row_idx, 0].annotate(
+            row_label,
+            xy=(-0.18, 0.5),
+            xycoords="axes fraction",
+            rotation=90,
+            va="center",
+            ha="right",
+            fontsize=11,
+        )
     cbar = fig.colorbar(mesh, ax=axes.ravel().tolist(), shrink=0.92)
     cbar.set_label(f"Pr({selection_label} finds >=1 anomaly)")
+    fig.supxlabel(r"$\log_{10}(m/\alpha)$")
+    fig.supylabel(r"$\log_{10}(1/p^{\min}_{(1)})$")
     fig.suptitle("Finite-sample detectability under alpha and anomaly-rate changes", fontsize=14)
     fig.savefig(paths.heatmap_path, bbox_inches="tight", dpi=220)
     plt.close(fig)
@@ -1072,14 +1254,14 @@ def export_heatmap_tikz(
 ) -> None:
     selection_label = method_label(mode, pruning)
     method = method_key(mode, pruning)
-    column_specs = [
+    row_specs = [
         ("inf", f"Perfect-score {selection_label}"),
         ("3.0", rf"Finite-score {selection_label} ($\kappa=3.0$)"),
     ]
     rows = []
     boundary_rows = []
-    for row_idx, scenario in enumerate(SCENARIOS):
-        for col_idx, (kappa, title) in enumerate(column_specs):
+    for row_idx, (kappa, title) in enumerate(row_specs):
+        for col_idx, scenario in enumerate(SCENARIOS):
             block = summary[
                 summary["scenario"].eq(scenario["name"]) & summary["kappa"].eq(kappa)
             ].copy()
@@ -1088,7 +1270,7 @@ def export_heatmap_tikz(
             block["figure"] = "figure1"
             block["panel"] = panel
             block["panel_title"] = title
-            block["plot_order"] = row_idx * len(column_specs) + col_idx + 1
+            block["plot_order"] = row_idx * len(SCENARIOS) + col_idx + 1
             block["group"] = "heatmap_cell"
             block["method"] = method
             block["m"] = ""
@@ -1125,10 +1307,7 @@ def export_heatmap_tikz(
                 ]
             )
 
-            x_edges = np.unique(
-                np.concatenate([block["x_left"].to_numpy(), block["x_right"].to_numpy()])
-            )
-            for point_order, x in enumerate([float(x_edges[0]), float(x_edges[-1])], start=1):
+            for point_order, x in enumerate(HEATMAP_VIEW_LIMITS, start=1):
                 boundary_rows.append(
                     {
                         "export_version": TIKZ_EXPORT_VERSION,
@@ -1271,6 +1450,7 @@ def validate_outputs(
     collapse_summary: pd.DataFrame,
     paths: Figure1Paths,
 ) -> None:
+    validate_heatmap_completeness(heatmap_summary)
     expected_scenarios = {scenario["name"] for scenario in SCENARIOS}
     observed_scenarios = set(heatmap_summary["scenario"].unique())
     if observed_scenarios != expected_scenarios:

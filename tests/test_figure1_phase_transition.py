@@ -203,16 +203,21 @@ class Figure1PhaseTransitionTest(unittest.TestCase):
         self.assertEqual(float(matrix[0, 0]), 0.75)
         self.assertEqual(float(matrix[1, 1]), 0.25)
 
-    def test_adaptive_heatmap_y_edges_do_not_create_empty_rows(self):
-        values = np.repeat(np.array([1.0, 2.0, 4.0, 8.0]), 3)
-
-        with mock.patch.object(figure1, "HEATMAP_Y_BINS", 10):
-            edges = figure1.adaptive_heatmap_y_edges(values)
-
-        bin_idx = np.searchsorted(edges, values, side="right") - 1
-        valid = (0 <= bin_idx) & (bin_idx < len(edges) - 1)
-        counts = np.bincount(bin_idx[valid], minlength=len(edges) - 1)
-        self.assertTrue(np.all(counts > 0))
+    def test_fixed_heatmap_edges_cover_viewport(self):
+        with mock.patch.multiple(
+            figure1,
+            HEATMAP_VIEW_LIMITS=(1.0, 2.0),
+            HEATMAP_X_BINS=2,
+            HEATMAP_Y_BINS=4,
+        ):
+            np.testing.assert_allclose(
+                figure1.heatmap_x_edges(),
+                np.array([1.0, 1.5, 2.0]),
+            )
+            np.testing.assert_allclose(
+                figure1.heatmap_y_edges(),
+                np.array([1.0, 1.25, 1.5, 1.75, 2.0]),
+            )
 
     def test_default_tasks_skip_partial_supplement_grid(self):
         patches = {
@@ -263,6 +268,15 @@ class Figure1PhaseTransitionTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            heatmap_view_limits = (0.8, 1.2)
+            heatmap_x_bins = 2
+            heatmap_y_bins = 2
+            heatmap_expected_rows = (
+                len(figure1.SCENARIOS)
+                * len(figure1.HEATMAP_KAPPAS)
+                * heatmap_x_bins
+                * heatmap_y_bins
+            )
             patches = {
                 "OUT_ROOT": root,
                 "N_VALUES": [2, 3],
@@ -273,7 +287,12 @@ class Figure1PhaseTransitionTest(unittest.TestCase):
                 "SUPPLEMENT_RHO_VALUES": np.array([0.0]),
                 "N_SEEDS": 1,
                 "WORKERS": 1,
-                "HEATMAP_Y_BINS": 4,
+                "HEATMAP_VIEW_LIMITS": heatmap_view_limits,
+                "HEATMAP_X_BINS": heatmap_x_bins,
+                "HEATMAP_Y_BINS": heatmap_y_bins,
+                "HEATMAP_CELL_TRIALS": 1,
+                "HEATMAP_MAX_ACCEPT_ATTEMPTS_PER_CELL": 200,
+                "WEIGHTED_HEATMAP_RHO_CANDIDATES": [0.5, 1.0],
                 "COLLAPSE_BINS": np.linspace(-2.0, 3.0, 6),
                 "ProcessPoolExecutor": InlineExecutor,
             }
@@ -292,6 +311,24 @@ class Figure1PhaseTransitionTest(unittest.TestCase):
                     set(heatmap["scenario"]),
                     {scenario["name"] for scenario in figure1.SCENARIOS},
                 )
+                self.assertEqual(len(heatmap), heatmap_expected_rows)
+                self.assertTrue((heatmap["count"] > 0).all())
+                np.testing.assert_allclose(
+                    sorted(heatmap["x_left"].unique()),
+                    np.linspace(*heatmap_view_limits, heatmap_x_bins + 1)[:-1],
+                )
+                np.testing.assert_allclose(
+                    sorted(heatmap["x_right"].unique()),
+                    np.linspace(*heatmap_view_limits, heatmap_x_bins + 1)[1:],
+                )
+                np.testing.assert_allclose(
+                    sorted(heatmap["y_bottom"].unique()),
+                    np.linspace(*heatmap_view_limits, heatmap_y_bins + 1)[:-1],
+                )
+                np.testing.assert_allclose(
+                    sorted(heatmap["y_top"].unique()),
+                    np.linspace(*heatmap_view_limits, heatmap_y_bins + 1)[1:],
+                )
                 for _, block in heatmap.groupby(["scenario", "kappa"]):
                     n_x = block[["x_left", "x_right"]].drop_duplicates().shape[0]
                     n_y = block[["y_bottom", "y_top"]].drop_duplicates().shape[0]
@@ -309,6 +346,46 @@ class Figure1PhaseTransitionTest(unittest.TestCase):
                     "figure1_collapse_reference_tikz.csv",
                 ]:
                     self.assertTrue((out_dir / filename).exists(), filename)
+
+                heatmap_tikz = pd.read_csv(out_dir / "figure1_heatmap_tikz.csv")
+                panel_order = (
+                    heatmap_tikz.groupby("panel", as_index=False)
+                    .agg(
+                        scenario=("scenario", "first"),
+                        kappa=("kappa", "first"),
+                        plot_order=("plot_order", "first"),
+                    )
+                    .sort_values("plot_order")
+                )
+                panel_order["kappa"] = panel_order["kappa"].astype(str)
+                self.assertEqual(
+                    panel_order[["panel", "scenario", "kappa", "plot_order"]]
+                    .to_records(index=False)
+                    .tolist(),
+                    [
+                        ("heatmap_r1_c1", "baseline", "inf", 1),
+                        ("heatmap_r1_c2", "alpha_005", "inf", 2),
+                        ("heatmap_r1_c3", "pi1_001", "inf", 3),
+                        ("heatmap_r2_c1", "baseline", "3.0", 4),
+                        ("heatmap_r2_c2", "alpha_005", "3.0", 5),
+                        ("heatmap_r2_c3", "pi1_001", "3.0", 6),
+                    ],
+                )
+                self.assertEqual(set(heatmap_tikz["export_version"]), {"tikz-v3"})
+
+                boundary = pd.read_csv(out_dir / "figure1_heatmap_boundary_tikz.csv")
+                for _, block in boundary.groupby("panel"):
+                    points = block.sort_values("plot_order")[["x", "y"]].to_numpy()
+                    np.testing.assert_allclose(
+                        points,
+                        np.array(
+                            [
+                                [heatmap_view_limits[0], heatmap_view_limits[0]],
+                                [heatmap_view_limits[1], heatmap_view_limits[1]],
+                            ]
+                        ),
+                    )
+                self.assertEqual(set(boundary["export_version"]), {"tikz-v3"})
 
 
 if __name__ == "__main__":

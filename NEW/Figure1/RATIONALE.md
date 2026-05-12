@@ -195,16 +195,16 @@ not realistic anomaly detection.
 
 ### Figure: Heatmap Grid
 
-The heatmap figure is a `3 x 2` grid. Columns compare score quality:
+The heatmap figure is a `2 x 3` grid. Rows compare score quality:
 
-- left column: perfect-score exact WEDF, `kappa = infinity`;
-- right column: finite-score exact WEDF, `kappa = 3.0`.
+- row 1: perfect-score exact WEDF, `kappa = infinity`;
+- row 2: finite-score exact WEDF, `kappa = 3.0`.
 
-Rows compare scenario changes:
+Columns compare scenario changes:
 
-- row 1: baseline, `alpha = 0.10`, `pi1 = 0.10`;
-- row 2: stricter FDR, `alpha = 0.05`, `pi1 = 0.10`;
-- row 3: rare anomalies, `alpha = 0.10`, `pi1 = 0.01`.
+- column 1: baseline, `alpha = 0.10`, `pi1 = 0.10`;
+- column 2: stricter FDR, `alpha = 0.05`, `pi1 = 0.10`;
+- column 3: rare anomalies, `alpha = 0.10`, `pi1 = 0.01`.
 
 Each heatmap panel is a theorem-style phase diagram.
 
@@ -221,29 +221,32 @@ testing burden, exact weighted CAD cannot discover anything. This happens even
 with perfect anomaly scores.
 
 The phase diagrams are rendered as pixel-based heatmaps rather than scatter
-plots. The simulation grid is intentionally widened beyond the original main
-paper grid to make these heatmap rectangles supported by actual simulations:
-the base grid uses `n` from `10` to `4000` and `rho` from `0` to `3.0`.
-A previous targeted high-resolution supplement added `n = 8000, 32000` only for
-the smaller `m` values. That made some upper heatmap rows partially unsupported
-and produced blank cells. The default run now uses a rectangular base grid only;
-optional supplements must cover all `m` values so every displayed row has
-simulated support across the x-axis.
+plots. The heatmaps now use a designed fixed diagnostic grid over the displayed
+square viewport rather than adaptively binning whatever simulation points happen
+to land in range. Each displayed cell is simulated directly and must have a
+positive count; missing heatmap cells are treated as an error rather than being
+left blank.
 
-For display, the heatmap y-axis is capped at the 99.5th percentile of simulated
-attainable resolution and then binned adaptively on the observed support. This
-keeps discrete unweighted resolution levels as actual rows instead of placing
-them into a larger fixed-width axis with empty intervals; no colors are
-interpolated or guessed.
+Within each generated heatmap figure, all panels share the same square displayed
+x and y limits, `2.25` to `4.75`. Equal scaling makes the theorem boundary
+`y = x` a literal 45-degree diagonal. The lower cutoff avoids spending figure
+area on very coarse p-value floors such as `0.1` while preserving the empirical
+leveling-off region around `2.25` to `3`. The upper cutoff keeps the plot inside
+the computationally meaningful exact-WCS regime; extending much farther would
+require very large `m`, making the WCS auxiliary-row calculation expensive while
+adding limited practical insight.
 
-Within each generated heatmap figure, all panels share the same displayed x and
-y limits. The underlying CSV still stores only simulated cells with their native
-bin edges; the axis alignment is a plotting choice so scenario comparisons are
-not distorted by panel-specific zooming.
+For a heatmap cell centered at `x`, the simulation chooses
+`m = round(alpha * 10^x)`. For unweighted cells centered at `y`, it chooses
+`n = round(10^y - 1)`, so the standard conformal p-value floor targets that
+resolution bin. For weighted cells, the simulation samples oracle-weighted
+configurations and accepts trials whose realized anomaly-side
+`log10(1 / p_min)` falls in the target y-bin. This makes the heatmap a
+conditional diagnostic phase diagram over the full displayed viewport.
 
-The finite-score column is worse than the perfect-score column solely because
-finite scores overlap with the calibration score distribution. The weights
-remain oracle in both columns.
+The finite-score row is worse than the perfect-score row solely because finite
+scores overlap with the calibration score distribution. The weights remain
+oracle in both score rows.
 
 ### Figure: Collapse Diagnostics
 
@@ -304,7 +307,7 @@ standalone figures into two sibling directories:
 Each directory contains:
 
 - `figure1_panel_a_schematic.png`: standalone Gaussian-shift schematic.
-- `figure1_heatmaps_alpha_pi_sensitivity.png`: `3 x 2` heatmap grid for
+- `figure1_heatmaps_alpha_pi_sensitivity.png`: `2 x 3` heatmap grid for
   baseline, stricter-alpha, and rare-anomaly scenarios.
 - `figure1_collapse_diagnostics.png`: `1 x 2` baseline collapse figure for the
   first-threshold and rank-aware diagnostics.
