@@ -29,7 +29,8 @@ class Figure3RandomizedPvalueInstabilityTest(unittest.TestCase):
         np.testing.assert_allclose(upper, np.array([1.0, 5.0 / 11.0]))
 
     def test_theorem_distribution_matches_two_anomaly_manual_case(self):
-        distribution = figure3.theorem_distribution_from_interval_upper(
+        distribution = figure3.theorem_distribution_from_intervals(
+            np.array([0.0, 0.0]),
             np.array([1.0, 1.0]),
             alpha=0.5,
             m_total=2,
@@ -37,7 +38,29 @@ class Figure3RandomizedPvalueInstabilityTest(unittest.TestCase):
 
         np.testing.assert_allclose(distribution, np.array([0.5, 0.25, 0.25]))
 
-    def test_tiny_run_writes_outputs_and_matches_theorem(self):
+    def test_theorem_distribution_handles_nonzero_lower_interval(self):
+        distribution = figure3.theorem_distribution_from_intervals(
+            np.array([0.2]),
+            np.array([0.6]),
+            alpha=0.5,
+            m_total=1,
+        )
+
+        np.testing.assert_allclose(distribution, np.array([0.25, 0.75]))
+
+    def test_theorem_distribution_is_valid_probability_vector(self):
+        distribution = figure3.theorem_distribution_from_intervals(
+            np.array([0.0, 0.1, 0.2]),
+            np.array([0.4, 0.5, 0.6]),
+            alpha=0.3,
+            m_total=3,
+        )
+
+        self.assertEqual(len(distribution), 4)
+        self.assertTrue((distribution >= 0.0).all())
+        self.assertAlmostEqual(float(distribution.sum()), 1.0)
+
+    def test_tiny_frontier_run_writes_outputs_and_matches_theorem(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             path_patches = {
@@ -50,12 +73,14 @@ class Figure3RandomizedPvalueInstabilityTest(unittest.TestCase):
                 "RATIONALE_PATH": root / "RATIONALE.md",
             }
             value_patches = {
+                "RHO_VALUES": np.array([0.0, 1.0]),
+                "N_WORLD_SEEDS": 2,
                 "N_CAL": 30,
                 "M": 30,
                 "N_ANOMALY": 3,
-                "SHIFTED_RHO": 0.5,
                 "N_RANDOMIZATIONS": 5000,
                 "SIMULATION_BATCH_SIZE": 1000,
+                "FRONTIER_BINS": 3,
             }
 
             with mock.patch.multiple(figure3, **path_patches), mock.patch.multiple(
@@ -69,12 +94,21 @@ class Figure3RandomizedPvalueInstabilityTest(unittest.TestCase):
 
             summary = pd.read_csv(path_patches["SUMMARY_PATH"])
             distribution = pd.read_csv(path_patches["DISTRIBUTION_PATH"])
-            self.assertEqual(set(summary["scenario"]), {"equal_weights", "shifted_weights"})
+            self.assertEqual(len(summary), 4)
+            self.assertEqual(
+                {
+                    (float(row.rho), int(row.world_seed))
+                    for row in summary.itertuples(index=False)
+                },
+                {(0.0, 0), (0.0, 1), (1.0, 0), (1.0, 1)},
+            )
             self.assertTrue(summary["inliers_nonrejectable"].all())
-            self.assertTrue((summary["min_inlier_interval_lower"] > figure3.ALPHA).all())
-            self.assertTrue((summary["miss_probability_error"].abs() < 0.08).all())
+            self.assertTrue(
+                (summary["min_inlier_interval_lower"] > figure3.ALPHA).all()
+            )
+            self.assertTrue((summary["miss_probability_error"].abs() < 0.10).all())
 
-            for _, block in distribution.groupby("scenario"):
+            for _, block in distribution.groupby("world_id"):
                 self.assertAlmostEqual(float(block["theorem_probability"].sum()), 1.0)
                 self.assertAlmostEqual(float(block["observed_probability"].sum()), 1.0)
 

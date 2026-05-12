@@ -19,8 +19,8 @@ INTERVAL_TIKZ_PATH = OUT_DIR / "figure3_interval_tikz.csv"
 DISTRIBUTION_TIKZ_PATH = OUT_DIR / "figure3_distribution_tikz.csv"
 RATIONALE_PATH = OUT_DIR / "RATIONALE.md"
 
-SUMMARY_VERSION = "randomized-instability-v1"
-TIKZ_EXPORT_VERSION = "tikz-v1"
+SUMMARY_VERSION = "randomized-instability-frontier-v2"
+TIKZ_EXPORT_VERSION = "tikz-frontier-v1"
 BASE_SEED = 20260512
 
 ALPHA = 0.10
@@ -29,39 +29,29 @@ M = 1000
 N_ANOMALY = 10
 DELTA_SCORE = 1.0
 D = 10
-SHIFTED_RHO = 1.5
-N_RANDOMIZATIONS = 50_000
+RHO_VALUES = np.linspace(0.0, 2.5, 11)
+N_WORLD_SEEDS = 40
+N_RANDOMIZATIONS = 20_000
 SIMULATION_BATCH_SIZE = 10_000
-
-SCENARIOS = [
-    {
-        "name": "equal_weights",
-        "label": "Equal weights",
-        "panel_prefix": "A",
-        "distribution_panel_prefix": "B",
-    },
-    {
-        "name": "shifted_weights",
-        "label": "Frozen shifted weights",
-        "panel_prefix": "C",
-        "distribution_panel_prefix": "D",
-    },
-]
+FRONTIER_BINS = 12
+INLIER_TEST_WEIGHT_CAP_FRACTION = 0.5
 
 COLORS = {
-    "interval": "#7c3aed",
+    "equal": "#111111",
+    "moderate": "#7c3aed",
+    "high": "#c2410c",
     "threshold": "#111111",
-    "inlier": "#2563eb",
     "observed": "#c2410c",
     "theorem": "#0f766e",
+    "points": "#4b5563",
 }
 
 
 @dataclass(frozen=True)
-class FixedSetup:
-    scenario: str
-    label: str
+class FixedWorld:
+    world_id: str
     rho: float
+    world_seed: int
     calib_scores: np.ndarray
     test_scores: np.ndarray
     y_true: np.ndarray
@@ -75,23 +65,20 @@ def rng_for(*values: int) -> np.random.Generator:
     return np.random.default_rng(np.random.SeedSequence([BASE_SEED, *values]))
 
 
+def rho_code(rho: float) -> int:
+    return int(round(float(rho) * 1000))
+
+
+def world_id_for(rho: float, world_seed: int) -> str:
+    return f"rho_{rho_code(rho):04d}_seed_{int(world_seed):03d}"
+
+
 def effective_sample_size(weights: np.ndarray) -> float:
     weights = np.asarray(weights, dtype=float)
     denominator = float(np.sum(weights**2))
     if denominator <= 0.0:
         return 0.0
     return float(np.sum(weights) ** 2 / denominator)
-
-
-def bh_discovery_count(p_values: np.ndarray, alpha: float) -> int:
-    p_values = np.asarray(p_values, dtype=float)
-    order = np.argsort(p_values, kind="mergesort")
-    sorted_p = p_values[order]
-    thresholds = alpha * np.arange(1, len(p_values) + 1) / len(p_values)
-    passed = sorted_p <= thresholds
-    if not bool(np.any(passed)):
-        return 0
-    return int(np.flatnonzero(passed)[-1] + 1)
 
 
 def bh_discovery_counts_for_rows(
@@ -138,17 +125,11 @@ def sorted_calibration(
     return sorted_scores, sorted_weights, suffix_weights
 
 
-def scenario_index(name: str) -> int:
-    for idx, scenario in enumerate(SCENARIOS):
-        if str(scenario["name"]) == name:
-            return idx
-    raise ValueError(f"Unknown Figure 3 scenario: {name!r}.")
-
-
-def build_fixed_setup(scenario: dict[str, str]) -> FixedSetup:
-    scenario_name = str(scenario["name"])
-    idx = scenario_index(scenario_name)
-    score_rng = rng_for(idx, 0)
+def build_fixed_world(rho: float, world_seed: int) -> FixedWorld:
+    rho = float(rho)
+    world_seed = int(world_seed)
+    code = rho_code(rho)
+    score_rng = rng_for(code, world_seed, 0)
     calib_scores = score_rng.normal(0.0, 1.0, int(N_CAL))
     n_inlier = int(M) - int(N_ANOMALY)
     if n_inlier < 1 or int(N_ANOMALY) < 1:
@@ -163,13 +144,11 @@ def build_fixed_setup(scenario: dict[str, str]) -> FixedSetup:
         [np.zeros(n_inlier, dtype=bool), np.ones(int(N_ANOMALY), dtype=bool)]
     )
 
-    if scenario_name == "equal_weights":
-        rho = 0.0
+    if np.isclose(rho, 0.0):
         calib_weights = np.ones(int(N_CAL), dtype=float)
         test_weights = np.ones(int(M), dtype=float)
-    elif scenario_name == "shifted_weights":
-        rho = float(SHIFTED_RHO)
-        weight_rng = rng_for(idx, 1)
+    else:
+        weight_rng = rng_for(code, world_seed, 1)
         calib_x = weight_rng.normal(0.0, 1.0, size=(int(N_CAL), int(D)))
         inlier_x = weight_rng.normal(0.0, 1.0, size=(n_inlier, int(D)))
         anomaly_x = weight_rng.normal(0.0, 1.0, size=(int(N_ANOMALY), int(D)))
@@ -178,8 +157,10 @@ def build_fixed_setup(scenario: dict[str, str]) -> FixedSetup:
         test_x = np.vstack([inlier_x, anomaly_x])
         calib_weights = np.exp(rho * calib_x[:, 0] - 0.5 * rho**2)
         test_weights = np.exp(rho * test_x[:, 0] - 0.5 * rho**2)
-    else:
-        raise ValueError(f"Unsupported scenario: {scenario_name!r}.")
+        inlier_cap = float(INLIER_TEST_WEIGHT_CAP_FRACTION) * float(
+            np.sum(calib_weights)
+        )
+        test_weights[:n_inlier] = np.minimum(test_weights[:n_inlier], inlier_cap)
 
     sorted_scores, _, suffix_weights = sorted_calibration(calib_scores, calib_weights)
     lower, upper = randomized_pvalue_intervals(
@@ -189,10 +170,10 @@ def build_fixed_setup(scenario: dict[str, str]) -> FixedSetup:
         test_scores,
         test_weights,
     )
-    return FixedSetup(
-        scenario=scenario_name,
-        label=str(scenario["label"]),
+    return FixedWorld(
+        world_id=world_id_for(rho, world_seed),
         rho=rho,
+        world_seed=world_seed,
         calib_scores=calib_scores,
         test_scores=test_scores,
         y_true=y_true,
@@ -203,34 +184,55 @@ def build_fixed_setup(scenario: dict[str, str]) -> FixedSetup:
     )
 
 
-def build_fixed_setups() -> list[FixedSetup]:
-    return [build_fixed_setup(scenario) for scenario in SCENARIOS]
+def build_fixed_worlds() -> list[FixedWorld]:
+    return [
+        build_fixed_world(float(rho), world_seed)
+        for rho in RHO_VALUES
+        for world_seed in range(int(N_WORLD_SEEDS))
+    ]
 
 
-def theorem_distribution_from_interval_upper(
+def interval_cdf(thresholds: np.ndarray, lower: float, upper: float) -> np.ndarray:
+    thresholds = np.asarray(thresholds, dtype=float)
+    lower = float(lower)
+    upper = float(upper)
+    if upper < lower:
+        raise ValueError("Interval upper bound must be at least the lower bound.")
+    if np.isclose(upper, lower):
+        return (thresholds >= upper).astype(float)
+    return np.clip((thresholds - lower) / (upper - lower), 0.0, 1.0)
+
+
+def theorem_distribution_from_intervals(
+    interval_lower: np.ndarray,
     interval_upper: np.ndarray,
     *,
     alpha: float,
     m_total: int,
 ) -> np.ndarray:
+    interval_lower = np.asarray(interval_lower, dtype=float)
     interval_upper = np.asarray(interval_upper, dtype=float)
-    if interval_upper.ndim != 1 or len(interval_upper) == 0:
-        raise ValueError("interval_upper must be a nonempty one-dimensional array.")
-    if np.any(interval_upper <= 0.0):
-        raise ValueError("All randomized anomaly interval upper bounds must be positive.")
+    if interval_lower.ndim != 1 or interval_upper.ndim != 1:
+        raise ValueError("Interval bounds must be one-dimensional arrays.")
+    if len(interval_lower) == 0 or len(interval_lower) != len(interval_upper):
+        raise ValueError("Interval bounds must be nonempty and have equal length.")
+    if np.any(interval_upper < interval_lower):
+        raise ValueError("Interval upper bounds must be at least lower bounds.")
 
     n_anomaly = len(interval_upper)
     thresholds = alpha * np.arange(1, n_anomaly + 1) / m_total
     category_probs = []
-    for upper in interval_upper:
-        cumulative = np.minimum(thresholds, upper) / upper
+    for lower, upper in zip(interval_lower, interval_upper, strict=True):
+        cumulative = interval_cdf(thresholds, lower, upper)
         probs = np.empty(n_anomaly + 1, dtype=float)
         probs[0] = cumulative[0]
         probs[1:n_anomaly] = np.diff(cumulative)
         probs[n_anomaly] = 1.0 - cumulative[-1]
         probs = np.clip(probs, 0.0, 1.0)
-        probs = probs / float(np.sum(probs))
-        category_probs.append(probs)
+        total = float(np.sum(probs))
+        if total <= 0.0:
+            raise ValueError("Invalid interval category probabilities.")
+        category_probs.append(probs / total)
 
     zero_state = (0,) * (n_anomaly + 1)
     state_probs: dict[tuple[int, ...], float] = {zero_state: 1.0}
@@ -262,7 +264,23 @@ def theorem_distribution_from_interval_upper(
     return discovery_probs / float(np.sum(discovery_probs))
 
 
+def theorem_distribution_from_interval_upper(
+    interval_upper: np.ndarray,
+    *,
+    alpha: float,
+    m_total: int,
+) -> np.ndarray:
+    interval_upper = np.asarray(interval_upper, dtype=float)
+    return theorem_distribution_from_intervals(
+        np.zeros_like(interval_upper),
+        interval_upper,
+        alpha=alpha,
+        m_total=m_total,
+    )
+
+
 def simulate_randomized_discovery_counts(
+    interval_lower: np.ndarray,
     interval_upper: np.ndarray,
     *,
     alpha: float,
@@ -270,6 +288,7 @@ def simulate_randomized_discovery_counts(
     n_randomizations: int,
     seed_offset: int,
 ) -> np.ndarray:
+    interval_lower = np.asarray(interval_lower, dtype=float)
     interval_upper = np.asarray(interval_upper, dtype=float)
     counts = np.empty(int(n_randomizations), dtype=int)
     rng = rng_for(seed_offset, 20)
@@ -277,7 +296,9 @@ def simulate_randomized_discovery_counts(
     while start < int(n_randomizations):
         stop = min(start + int(SIMULATION_BATCH_SIZE), int(n_randomizations))
         uniforms = rng.random((stop - start, len(interval_upper)))
-        p_values = uniforms * interval_upper[None, :]
+        p_values = interval_lower[None, :] + uniforms * (
+            interval_upper - interval_lower
+        )[None, :]
         counts[start:stop] = bh_discovery_counts_for_rows(
             p_values,
             alpha=alpha,
@@ -287,84 +308,115 @@ def simulate_randomized_discovery_counts(
     return counts
 
 
+def rank_interval_ratio(interval_upper: np.ndarray, alpha: float, m_total: int) -> float:
+    sorted_upper = np.sort(np.asarray(interval_upper, dtype=float), kind="mergesort")
+    ranks = np.arange(1, len(sorted_upper) + 1)
+    return float(np.min(sorted_upper / (alpha * ranks / m_total)))
+
+
+def distribution_moments(probabilities: np.ndarray) -> tuple[float, float]:
+    probabilities = np.asarray(probabilities, dtype=float)
+    values = np.arange(len(probabilities), dtype=float)
+    mean = float(np.sum(values * probabilities))
+    variance = float(np.sum((values - mean) ** 2 * probabilities))
+    return mean, variance
+
+
+def summarize_world(
+    world: FixedWorld,
+) -> tuple[dict[str, float | int | str | bool], list[dict[str, float | int | str]]]:
+    anomaly_lower = world.pvalue_lower[world.y_true]
+    anomaly_upper = world.pvalue_upper[world.y_true]
+    inlier_lower = world.pvalue_lower[~world.y_true]
+    theorem_probs = theorem_distribution_from_intervals(
+        anomaly_lower,
+        anomaly_upper,
+        alpha=float(ALPHA),
+        m_total=int(M),
+    )
+    counts = simulate_randomized_discovery_counts(
+        anomaly_lower,
+        anomaly_upper,
+        alpha=float(ALPHA),
+        m_total=int(M),
+        n_randomizations=int(N_RANDOMIZATIONS),
+        seed_offset=rho_code(world.rho) + 10_000 * int(world.world_seed),
+    )
+    observed_counts = np.bincount(counts, minlength=len(theorem_probs)).astype(float)
+    observed_probs = observed_counts / float(np.sum(observed_counts))
+    theorem_mean, theorem_variance = distribution_moments(theorem_probs)
+    observed_mean = float(np.mean(counts))
+    observed_variance = float(np.var(counts))
+    ratio = rank_interval_ratio(anomaly_upper, float(ALPHA), int(M))
+    total_calib_weight = float(np.sum(world.calib_weights))
+
+    summary_row = {
+        "summary_version": SUMMARY_VERSION,
+        "world_id": world.world_id,
+        "rho": float(world.rho),
+        "world_seed": int(world.world_seed),
+        "alpha": float(ALPHA),
+        "n_cal": int(N_CAL),
+        "m": int(M),
+        "n_anomaly": int(np.sum(world.y_true)),
+        "n_inlier": int(np.sum(~world.y_true)),
+        "n_randomizations": int(N_RANDOMIZATIONS),
+        "total_calib_weight": total_calib_weight,
+        "calib_ess": effective_sample_size(world.calib_weights),
+        "max_normalized_calib_weight": float(
+            np.max(world.calib_weights) / total_calib_weight
+        ),
+        "min_anomaly_interval_lower": float(np.min(anomaly_lower)),
+        "max_anomaly_interval_lower": float(np.max(anomaly_lower)),
+        "min_anomaly_interval_upper": float(np.min(anomaly_upper)),
+        "max_anomaly_interval_upper": float(np.max(anomaly_upper)),
+        "mean_anomaly_interval_width": float(np.mean(anomaly_upper - anomaly_lower)),
+        "max_anomaly_interval_width": float(np.max(anomaly_upper - anomaly_lower)),
+        "rank_interval_ratio": ratio,
+        "log10_rank_interval_ratio": float(np.log10(ratio)),
+        "min_inlier_interval_lower": float(np.min(inlier_lower)),
+        "max_inlier_interval_lower": float(np.max(inlier_lower)),
+        "inliers_nonrejectable": bool(np.min(inlier_lower) > float(ALPHA)),
+        "theorem_miss_probability": float(theorem_probs[0]),
+        "observed_miss_probability": float(observed_probs[0]),
+        "miss_probability_error": float(observed_probs[0] - theorem_probs[0]),
+        "theorem_mean_discoveries": theorem_mean,
+        "observed_mean_discoveries": observed_mean,
+        "theorem_variance_discoveries": theorem_variance,
+        "observed_variance_discoveries": observed_variance,
+    }
+
+    distribution_rows = []
+    for discoveries, theorem_probability in enumerate(theorem_probs):
+        distribution_rows.append(
+            {
+                "summary_version": SUMMARY_VERSION,
+                "world_id": world.world_id,
+                "rho": float(world.rho),
+                "world_seed": int(world.world_seed),
+                "discoveries": int(discoveries),
+                "theorem_probability": float(theorem_probability),
+                "observed_probability": float(observed_probs[discoveries]),
+                "observed_count": int(observed_counts[discoveries]),
+                "n_randomizations": int(N_RANDOMIZATIONS),
+            }
+        )
+
+    return summary_row, distribution_rows
+
+
 def build_results(
-    setups: list[FixedSetup],
+    worlds: list[FixedWorld],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     summary_rows = []
     distribution_rows = []
-    for setup in setups:
-        idx = scenario_index(setup.scenario)
-        anomaly_upper = setup.pvalue_upper[setup.y_true]
-        anomaly_lower = setup.pvalue_lower[setup.y_true]
-        inlier_lower = setup.pvalue_lower[~setup.y_true]
-        theorem_probs = theorem_distribution_from_interval_upper(
-            anomaly_upper,
-            alpha=float(ALPHA),
-            m_total=int(M),
-        )
-        counts = simulate_randomized_discovery_counts(
-            anomaly_upper,
-            alpha=float(ALPHA),
-            m_total=int(M),
-            n_randomizations=int(N_RANDOMIZATIONS),
-            seed_offset=idx,
-        )
-        observed_counts = np.bincount(counts, minlength=len(theorem_probs)).astype(float)
-        observed_probs = observed_counts / float(np.sum(observed_counts))
-        discovery_values = np.arange(len(theorem_probs), dtype=float)
-        theorem_mean = float(np.sum(discovery_values * theorem_probs))
-        observed_mean = float(np.mean(counts))
-        theorem_variance = float(
-            np.sum((discovery_values - theorem_mean) ** 2 * theorem_probs)
-        )
-        observed_variance = float(np.var(counts))
-        theorem_miss = float(theorem_probs[0])
-        observed_miss = float(observed_probs[0])
-
-        for discoveries, theorem_probability in enumerate(theorem_probs):
-            distribution_rows.append(
-                {
-                    "summary_version": SUMMARY_VERSION,
-                    "scenario": setup.scenario,
-                    "label": setup.label,
-                    "discoveries": discoveries,
-                    "theorem_probability": float(theorem_probability),
-                    "observed_probability": float(observed_probs[discoveries]),
-                    "observed_count": int(observed_counts[discoveries]),
-                    "n_randomizations": int(N_RANDOMIZATIONS),
-                }
-            )
-
-        summary_rows.append(
-            {
-                "summary_version": SUMMARY_VERSION,
-                "scenario": setup.scenario,
-                "label": setup.label,
-                "alpha": float(ALPHA),
-                "n_cal": int(N_CAL),
-                "m": int(M),
-                "n_anomaly": int(np.sum(setup.y_true)),
-                "n_inlier": int(np.sum(~setup.y_true)),
-                "rho": float(setup.rho),
-                "n_randomizations": int(N_RANDOMIZATIONS),
-                "total_calib_weight": float(np.sum(setup.calib_weights)),
-                "calib_ess": effective_sample_size(setup.calib_weights),
-                "min_anomaly_interval_lower": float(np.min(anomaly_lower)),
-                "max_anomaly_interval_lower": float(np.max(anomaly_lower)),
-                "min_anomaly_interval_upper": float(np.min(anomaly_upper)),
-                "max_anomaly_interval_upper": float(np.max(anomaly_upper)),
-                "min_inlier_interval_lower": float(np.min(inlier_lower)),
-                "max_inlier_interval_lower": float(np.max(inlier_lower)),
-                "inliers_nonrejectable": bool(np.min(inlier_lower) > float(ALPHA)),
-                "theorem_miss_probability": theorem_miss,
-                "observed_miss_probability": observed_miss,
-                "miss_probability_error": observed_miss - theorem_miss,
-                "theorem_mean_discoveries": theorem_mean,
-                "observed_mean_discoveries": observed_mean,
-                "theorem_variance_discoveries": theorem_variance,
-                "observed_variance_discoveries": observed_variance,
-            }
-        )
+    total_worlds = len(worlds)
+    for idx, world in enumerate(worlds, start=1):
+        summary_row, world_distribution_rows = summarize_world(world)
+        summary_rows.append(summary_row)
+        distribution_rows.extend(world_distribution_rows)
+        if idx % max(1, int(N_WORLD_SEEDS)) == 0 or idx == total_worlds:
+            print(f"completed Figure 3 fixed world {idx}/{total_worlds}", flush=True)
 
     summary = pd.DataFrame(summary_rows)
     distribution = pd.DataFrame(distribution_rows)
@@ -387,23 +439,32 @@ def summaries_are_current() -> bool:
 
 
 def load_or_build_results(
-    setups: list[FixedSetup],
+    worlds: list[FixedWorld],
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     if summaries_are_current():
-        print("loading existing Figure 3 summaries", flush=True)
+        print("loading existing Figure 3 frontier summaries", flush=True)
         return pd.read_csv(SUMMARY_PATH), pd.read_csv(DISTRIBUTION_PATH)
-    return build_results(setups)
+    return build_results(worlds)
 
 
 def validate_results(summary: pd.DataFrame, distribution: pd.DataFrame) -> None:
-    expected_scenarios = {str(scenario["name"]) for scenario in SCENARIOS}
-    observed_scenarios = set(summary["scenario"])
-    if observed_scenarios != expected_scenarios:
+    expected_pairs = {
+        (float(rho), int(world_seed))
+        for rho in RHO_VALUES
+        for world_seed in range(int(N_WORLD_SEEDS))
+    }
+    observed_pairs = {
+        (float(row.rho), int(row.world_seed))
+        for row in summary.itertuples(index=False)
+    }
+    if observed_pairs != expected_pairs:
         raise RuntimeError(
-            "Unexpected Figure 3 summary scenarios: "
-            f"missing={expected_scenarios - observed_scenarios}, "
-            f"unexpected={observed_scenarios - expected_scenarios}."
+            "Unexpected Figure 3 fixed worlds: "
+            f"missing={len(expected_pairs - observed_pairs)}, "
+            f"unexpected={len(observed_pairs - expected_pairs)}."
         )
+    if summary.duplicated(["rho", "world_seed"]).any():
+        raise RuntimeError("Figure 3 summary contains duplicate fixed worlds.")
     if not bool(summary["inliers_nonrejectable"].all()):
         raise RuntimeError("Figure 3 inlier p-value intervals must stay above alpha.")
     probability_columns = [
@@ -413,42 +474,113 @@ def validate_results(summary: pd.DataFrame, distribution: pd.DataFrame) -> None:
     for column in probability_columns:
         if not ((summary[column] >= 0.0) & (summary[column] <= 1.0)).all():
             raise RuntimeError(f"Summary probability column out of range: {column}.")
-    for scenario, block in distribution.groupby("scenario"):
+    for world_id, block in distribution.groupby("world_id"):
         theorem_sum = float(block["theorem_probability"].sum())
         observed_sum = float(block["observed_probability"].sum())
         if not np.isclose(theorem_sum, 1.0, atol=1e-10):
-            raise RuntimeError(f"Theorem distribution does not sum to 1: {scenario}.")
+            raise RuntimeError(f"Theorem distribution does not sum to 1: {world_id}.")
         if not np.isclose(observed_sum, 1.0, atol=1e-10):
-            raise RuntimeError(f"Observed distribution does not sum to 1: {scenario}.")
+            raise RuntimeError(f"Observed distribution does not sum to 1: {world_id}.")
 
 
-def plot_interval_panel(
+def world_lookup(worlds: list[FixedWorld]) -> dict[str, FixedWorld]:
+    return {world.world_id: world for world in worlds}
+
+
+def representative_worlds(
+    worlds: list[FixedWorld],
+    summary: pd.DataFrame,
+) -> list[FixedWorld]:
+    lookup = world_lookup(worlds)
+    rho_values = sorted(float(rho) for rho in summary["rho"].unique())
+    target_rhos = [
+        rho_values[0],
+        rho_values[len(rho_values) // 2],
+        rho_values[-1],
+    ]
+    reps = []
+    for target_rho in target_rhos:
+        block = summary[np.isclose(summary["rho"], target_rho)].copy()
+        median_x = float(block["log10_rank_interval_ratio"].median())
+        idx = (block["log10_rank_interval_ratio"] - median_x).abs().idxmin()
+        reps.append(lookup[str(summary.loc[idx, "world_id"])])
+    return reps
+
+
+def frontier_curve(summary: pd.DataFrame, column: str) -> pd.DataFrame:
+    x_values = summary["log10_rank_interval_ratio"].to_numpy(dtype=float)
+    if np.isclose(float(np.min(x_values)), float(np.max(x_values))):
+        return pd.DataFrame(
+            [
+                {
+                    "x": float(np.mean(x_values)),
+                    "mean": float(summary[column].mean()),
+                    "q10": float(summary[column].quantile(0.10)),
+                    "q90": float(summary[column].quantile(0.90)),
+                    "count": int(len(summary)),
+                }
+            ]
+        )
+    edges = np.linspace(
+        float(np.min(x_values)),
+        float(np.max(x_values)),
+        min(int(FRONTIER_BINS), max(2, len(summary))) + 1,
+    )
+    bin_idx = np.searchsorted(edges, x_values, side="right") - 1
+    bin_idx = np.clip(bin_idx, 0, len(edges) - 2)
+    rows = []
+    for idx in range(len(edges) - 1):
+        block = summary.loc[bin_idx == idx]
+        if block.empty:
+            continue
+        rows.append(
+            {
+                "x": float(block["log10_rank_interval_ratio"].mean()),
+                "mean": float(block[column].mean()),
+                "q10": float(block[column].quantile(0.10)),
+                "q90": float(block[column].quantile(0.90)),
+                "count": int(len(block)),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def plot_representative_intervals(
     ax: plt.Axes,
-    setup: FixedSetup,
-    panel_prefix: str,
+    worlds: list[FixedWorld],
+    summary: pd.DataFrame,
 ) -> None:
-    anomaly_upper = np.sort(setup.pvalue_upper[setup.y_true], kind="mergesort")
-    ranks = np.arange(1, len(anomaly_upper) + 1)
+    reps = representative_worlds(worlds, summary)
+    style_keys = ["equal", "moderate", "high"]
+    ranks = np.arange(1, int(N_ANOMALY) + 1)
     thresholds = float(ALPHA) * ranks / int(M)
-    min_inlier_lower = float(np.min(setup.pvalue_lower[~setup.y_true]))
     y_floor = max(float(ALPHA) / int(M) * 0.25, 1e-8)
+    offsets = np.linspace(-0.18, 0.18, len(reps))
 
-    ax.vlines(
-        ranks,
-        y_floor,
-        anomaly_upper,
-        color=COLORS["interval"],
-        alpha=0.75,
-        linewidth=2.0,
-        label=r"randomized interval $[0,a_j]$",
-    )
-    ax.scatter(
-        ranks,
-        anomaly_upper,
-        s=32,
-        color=COLORS["interval"],
-        zorder=3,
-    )
+    for offset, style_key, world in zip(offsets, style_keys, reps, strict=True):
+        lower = world.pvalue_lower[world.y_true]
+        upper = world.pvalue_upper[world.y_true]
+        order = np.argsort(upper, kind="mergesort")
+        lower = lower[order]
+        upper = upper[order]
+        row = summary[summary["world_id"].eq(world.world_id)].iloc[0]
+        x = ranks + offset
+        color = COLORS[style_key]
+        label = (
+            rf"$\rho={world.rho:.1f}$, "
+            rf"$N_{{eff}}={float(row.calib_ess):.0f}$"
+        )
+        ax.vlines(
+            x,
+            np.maximum(lower, y_floor),
+            upper,
+            color=color,
+            alpha=0.72,
+            linewidth=2.0,
+            label=label,
+        )
+        ax.scatter(x, upper, color=color, s=22, zorder=3)
+
     ax.plot(
         ranks,
         thresholds,
@@ -457,146 +589,190 @@ def plot_interval_panel(
         linewidth=1.3,
         marker="o",
         markersize=3,
-        label="BH rank thresholds",
-    )
-    ax.axhline(
-        min_inlier_lower,
-        color=COLORS["inlier"],
-        linestyle=":",
-        linewidth=1.4,
-        label="lowest inlier interval",
+        label="BH thresholds",
     )
     ax.set_yscale("log")
+    ax.set_xlim(0.5, int(N_ANOMALY) + 0.5)
     ax.set_ylim(y_floor, 1.05)
-    ax.set_xlim(0.5, len(anomaly_upper) + 0.5)
     ax.set_xlabel("anomaly rank")
-    ax.set_ylabel("randomized p-value scale")
-    ax.set_title(f"{panel_prefix}. {setup.label}: fixed intervals")
+    ax.set_ylabel("randomized p-value interval")
+    ax.set_title("A. Fixed-world randomized intervals")
     ax.grid(alpha=0.18, linewidth=0.6)
     ax.legend(frameon=False, fontsize=8, loc="best")
 
 
-def plot_distribution_panel(
+def plot_frontier_panel(
     ax: plt.Axes,
-    distribution: pd.DataFrame,
     summary: pd.DataFrame,
-    setup: FixedSetup,
-    panel_prefix: str,
+    *,
+    observed_column: str,
+    theorem_column: str,
+    ylabel: str,
+    title: str,
 ) -> None:
-    block = distribution[distribution["scenario"].eq(setup.scenario)].sort_values(
-        "discoveries"
-    )
-    summary_row = summary[summary["scenario"].eq(setup.scenario)].iloc[0]
-    x = block["discoveries"].to_numpy(dtype=float)
-    ax.bar(
+    x = summary["log10_rank_interval_ratio"].to_numpy(dtype=float)
+    observed = summary[observed_column].to_numpy(dtype=float)
+    theorem_curve = frontier_curve(summary, theorem_column)
+    observed_curve = frontier_curve(summary, observed_column)
+
+    scatter = ax.scatter(
         x,
-        block["observed_probability"],
-        width=0.75,
-        color=COLORS["observed"],
+        observed,
+        c=summary["rho"].to_numpy(dtype=float),
+        cmap="viridis",
+        s=16,
         alpha=0.35,
-        label="observed randomization",
+        linewidths=0,
+        label="observed fixed worlds",
+    )
+    ax.fill_between(
+        theorem_curve["x"],
+        theorem_curve["q10"],
+        theorem_curve["q90"],
+        color=COLORS["theorem"],
+        alpha=0.16,
+        linewidth=0,
+        label="theorem 10-90%",
     )
     ax.plot(
-        x,
-        block["theorem_probability"],
+        theorem_curve["x"],
+        theorem_curve["mean"],
         color=COLORS["theorem"],
         linewidth=2.0,
-        marker="o",
-        markersize=4,
-        label="conditional interval theorem",
+        label="theorem mean",
     )
+    ax.plot(
+        observed_curve["x"],
+        observed_curve["mean"],
+        color=COLORS["observed"],
+        linewidth=1.6,
+        linestyle=":",
+        label="observed mean",
+    )
+    ax.set_xlabel(r"$\log_{10}$ rank interval ratio")
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.grid(alpha=0.18, linewidth=0.6)
+    ax.legend(frameon=False, fontsize=8, loc="best")
+    return scatter
+
+
+def plot_calibration_panel(ax: plt.Axes, summary: pd.DataFrame) -> None:
+    theorem = summary["theorem_miss_probability"].to_numpy(dtype=float)
+    observed = summary["observed_miss_probability"].to_numpy(dtype=float)
+    ax.scatter(
+        theorem,
+        observed,
+        c=summary["rho"].to_numpy(dtype=float),
+        cmap="viridis",
+        s=18,
+        alpha=0.45,
+        linewidths=0,
+    )
+    ax.plot([0.0, 1.0], [0.0, 1.0], color="black", linestyle="--", linewidth=1.1)
+    max_error = float(np.max(np.abs(observed - theorem)))
     ax.text(
-        0.97,
-        0.92,
-        "miss obs/theorem = "
-        f"{summary_row.observed_miss_probability:.3f}/"
-        f"{summary_row.theorem_miss_probability:.3f}",
+        0.04,
+        0.94,
+        f"max abs error = {max_error:.3f}",
         transform=ax.transAxes,
-        ha="right",
+        ha="left",
         va="top",
         fontsize=9,
         bbox={"facecolor": "white", "edgecolor": "none", "alpha": 0.82},
     )
-    ax.set_xlim(-0.6, float(np.max(x)) + 0.6)
-    y_max = float(
-        block[["observed_probability", "theorem_probability"]].max().max()
-    )
-    ax.set_ylim(0.0, max(0.08, y_max * 1.18))
-    ax.set_xlabel("BH anomaly discoveries")
-    ax.set_ylabel("probability")
-    ax.set_title(f"{panel_prefix}. {setup.label}: discovery distribution")
-    ax.grid(axis="y", alpha=0.18, linewidth=0.6)
-    ax.legend(frameon=False, fontsize=8, loc="best")
+    ax.set_xlim(-0.03, 1.03)
+    ax.set_ylim(-0.03, 1.03)
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel("theorem miss probability")
+    ax.set_ylabel("observed miss probability")
+    ax.set_title("D. Conditional theorem calibration")
+    ax.grid(alpha=0.18, linewidth=0.6)
 
 
 def plot_figure(
-    setups: list[FixedSetup],
+    worlds: list[FixedWorld],
     summary: pd.DataFrame,
-    distribution: pd.DataFrame,
 ) -> None:
-    fig, axes = plt.subplots(2, 2, figsize=(13.8, 9.4), constrained_layout=True)
-    scenario_meta = {str(scenario["name"]): scenario for scenario in SCENARIOS}
-    for row_idx, setup in enumerate(setups):
-        meta = scenario_meta[setup.scenario]
-        plot_interval_panel(axes[row_idx, 0], setup, str(meta["panel_prefix"]))
-        plot_distribution_panel(
-            axes[row_idx, 1],
-            distribution,
-            summary,
-            setup,
-            str(meta["distribution_panel_prefix"]),
-        )
+    fig, axes = plt.subplots(2, 2, figsize=(14.4, 10.0), constrained_layout=True)
+    plot_representative_intervals(axes[0, 0], worlds, summary)
+    scatter = plot_frontier_panel(
+        axes[0, 1],
+        summary,
+        observed_column="observed_miss_probability",
+        theorem_column="theorem_miss_probability",
+        ylabel="miss probability",
+        title="B. Miss probability frontier",
+    )
+    plot_frontier_panel(
+        axes[1, 0],
+        summary,
+        observed_column="observed_variance_discoveries",
+        theorem_column="theorem_variance_discoveries",
+        ylabel="variance of BH discoveries",
+        title="C. Discovery variance frontier",
+    )
+    plot_calibration_panel(axes[1, 1], summary)
+    cbar = fig.colorbar(scatter, ax=axes[:, 1], fraction=0.035, pad=0.02)
+    cbar.set_label(r"weight shift $\rho$")
     fig.suptitle(
-        "Randomized WEDF p-value instability under fixed scores and weights",
+        "Randomized WEDF instability is predicted by fixed interval geometry",
         fontsize=14,
     )
     fig.savefig(FIGURE_PATH, bbox_inches="tight", dpi=220)
     plt.close(fig)
 
 
-def export_interval_tikz(setups: list[FixedSetup]) -> None:
+def export_interval_tikz(worlds: list[FixedWorld], summary: pd.DataFrame) -> None:
     rows = []
-    scenario_order = {str(scenario["name"]): idx + 1 for idx, scenario in enumerate(SCENARIOS)}
-    for setup in setups:
-        anomaly_upper = np.sort(setup.pvalue_upper[setup.y_true], kind="mergesort")
-        ranks = np.arange(1, len(anomaly_upper) + 1)
-        thresholds = float(ALPHA) * ranks / int(M)
-        min_inlier_lower = float(np.min(setup.pvalue_lower[~setup.y_true]))
-        plot_order = scenario_order[setup.scenario]
-        for rank, upper, threshold in zip(ranks, anomaly_upper, thresholds, strict=True):
+    reps = representative_worlds(worlds, summary)
+    ranks = np.arange(1, int(N_ANOMALY) + 1)
+    thresholds = float(ALPHA) * ranks / int(M)
+    for plot_order, world in enumerate(reps, start=1):
+        lower = world.pvalue_lower[world.y_true]
+        upper = world.pvalue_upper[world.y_true]
+        order = np.argsort(upper, kind="mergesort")
+        for rank, low, high in zip(ranks, lower[order], upper[order], strict=True):
             rows.append(
                 {
                     "export_version": TIKZ_EXPORT_VERSION,
                     "figure": "figure3",
-                    "panel": "intervals",
-                    "panel_title": "Fixed randomized p-value intervals",
+                    "panel": "A",
+                    "panel_title": "Fixed-world randomized intervals",
                     "plot_order": plot_order,
-                    "group": "anomaly_interval_upper",
+                    "group": "anomaly_interval",
                     "method": "randomized_wedf",
-                    "scenario": setup.scenario,
+                    "world_id": world.world_id,
+                    "rho": float(world.rho),
+                    "world_seed": int(world.world_seed),
                     "rank": int(rank),
                     "x": int(rank),
-                    "y": float(upper),
-                    "value": float(upper),
+                    "y": float(high),
+                    "y_lower": float(low),
+                    "value": float(high),
                     "probability": "",
                     "count": "",
-                    "style_key": "interval_upper",
-                    "label": setup.label,
+                    "style_key": f"rho_{rho_code(world.rho)}",
+                    "label": rf"$\rho={world.rho:.1f}$",
                 }
             )
+        for rank, threshold in zip(ranks, thresholds, strict=True):
             rows.append(
                 {
                     "export_version": TIKZ_EXPORT_VERSION,
                     "figure": "figure3",
-                    "panel": "intervals",
-                    "panel_title": "Fixed randomized p-value intervals",
+                    "panel": "A",
+                    "panel_title": "Fixed-world randomized intervals",
                     "plot_order": plot_order,
                     "group": "bh_threshold",
                     "method": "bh",
-                    "scenario": setup.scenario,
+                    "world_id": world.world_id,
+                    "rho": float(world.rho),
+                    "world_seed": int(world.world_seed),
                     "rank": int(rank),
                     "x": int(rank),
                     "y": float(threshold),
+                    "y_lower": "",
                     "value": float(threshold),
                     "probability": "",
                     "count": "",
@@ -604,91 +780,127 @@ def export_interval_tikz(setups: list[FixedSetup]) -> None:
                     "label": r"$\alpha r / m$",
                 }
             )
-        rows.append(
-            {
-                "export_version": TIKZ_EXPORT_VERSION,
-                "figure": "figure3",
-                "panel": "intervals",
-                "panel_title": "Fixed randomized p-value intervals",
-                "plot_order": plot_order,
-                "group": "inlier_lower_reference",
-                "method": "randomized_wedf",
-                "scenario": setup.scenario,
-                "rank": "",
-                "x": "",
-                "y": min_inlier_lower,
-                "value": min_inlier_lower,
-                "probability": "",
-                "count": "",
-                "style_key": "inlier_lower",
-                "label": "lowest inlier interval",
-            }
-        )
     pd.DataFrame(rows).to_csv(INTERVAL_TIKZ_PATH, index=False)
 
 
-def export_distribution_tikz(distribution: pd.DataFrame) -> None:
+def export_frontier_tikz(summary: pd.DataFrame) -> None:
     rows = []
-    scenario_order = {str(scenario["name"]): idx + 1 for idx, scenario in enumerate(SCENARIOS)}
-    for row in distribution.sort_values(["scenario", "discoveries"]).itertuples(index=False):
-        plot_order = scenario_order[str(row.scenario)]
-        for method, probability in [
-            ("observed_randomization", float(row.observed_probability)),
-            ("conditional_interval_theorem", float(row.theorem_probability)),
-        ]:
+    panel_specs = [
+        (
+            "B",
+            "Miss probability frontier",
+            "miss_probability",
+            "observed_miss_probability",
+            "theorem_miss_probability",
+        ),
+        (
+            "C",
+            "Discovery variance frontier",
+            "discovery_variance",
+            "observed_variance_discoveries",
+            "theorem_variance_discoveries",
+        ),
+        (
+            "D",
+            "Conditional theorem calibration",
+            "miss_calibration",
+            "observed_miss_probability",
+            "theorem_miss_probability",
+        ),
+    ]
+    for panel, title, group, observed_col, theorem_col in panel_specs:
+        for row in summary.sort_values(["rho", "world_seed"]).itertuples(index=False):
+            if panel == "D":
+                x = float(getattr(row, theorem_col))
+                y = float(getattr(row, observed_col))
+            else:
+                x = float(row.log10_rank_interval_ratio)
+                y = float(getattr(row, observed_col))
             rows.append(
                 {
                     "export_version": TIKZ_EXPORT_VERSION,
                     "figure": "figure3",
-                    "panel": "distribution",
-                    "panel_title": "BH discovery distribution",
-                    "plot_order": plot_order,
-                    "group": "discovery_distribution",
-                    "method": method,
-                    "scenario": str(row.scenario),
-                    "rank": int(row.discoveries),
-                    "x": int(row.discoveries),
-                    "y": probability,
-                    "value": probability,
-                    "probability": probability,
-                    "count": int(row.observed_count) if method == "observed_randomization" else "",
-                    "style_key": method,
-                    "label": str(row.label),
+                    "panel": panel,
+                    "panel_title": title,
+                    "plot_order": int(row.world_seed) + 1,
+                    "group": group,
+                    "method": "observed_randomization",
+                    "world_id": str(row.world_id),
+                    "rho": float(row.rho),
+                    "world_seed": int(row.world_seed),
+                    "rank": "",
+                    "x": x,
+                    "y": y,
+                    "value": y,
+                    "probability": y if "probability" in observed_col else "",
+                    "count": int(row.n_randomizations),
+                    "style_key": "observed",
+                    "label": "observed randomization",
                 }
             )
+            if panel != "D":
+                rows.append(
+                    {
+                        "export_version": TIKZ_EXPORT_VERSION,
+                        "figure": "figure3",
+                        "panel": panel,
+                        "panel_title": title,
+                        "plot_order": int(row.world_seed) + 1,
+                        "group": group,
+                        "method": "conditional_interval_theorem",
+                        "world_id": str(row.world_id),
+                        "rho": float(row.rho),
+                        "world_seed": int(row.world_seed),
+                        "rank": "",
+                        "x": float(row.log10_rank_interval_ratio),
+                        "y": float(getattr(row, theorem_col)),
+                        "value": float(getattr(row, theorem_col)),
+                        "probability": (
+                            float(getattr(row, theorem_col))
+                            if "probability" in theorem_col
+                            else ""
+                        ),
+                        "count": "",
+                        "style_key": "theorem",
+                        "label": "conditional interval theorem",
+                    }
+                )
     pd.DataFrame(rows).to_csv(DISTRIBUTION_TIKZ_PATH, index=False)
 
 
 def write_rationale() -> None:
     RATIONALE_PATH.write_text(
-        """# Figure 3 Rationale: Randomized P-Value Instability
+        """# Figure 3 Rationale: Randomization Instability Frontier
 
-This figure conditions on one fixed set of scores and weights, then resamples
-only the uniforms used in randomized weighted conformal p-values. It isolates
-the variability caused by randomizing the test self-atom.
+This figure is a theorem-validation experiment, not a benchmark. Each point is
+one fixed world: calibration scores, test scores, calibration weights, and test
+weights are frozen. Only the uniforms inside the randomized weighted conformal
+p-values are resampled.
 
-For the anomaly points, scores are placed above the calibration range, so the
-calibration tail mass is zero and the randomized WEDF p-value is uniform on
-`[0, w_j / (W_cal + w_j)]`. For inliers, scores are placed below the calibration
-range, so their randomized p-values stay above `alpha` and cannot drive BH.
+Perfect score separation is enforced in every fixed world. Inliers are placed
+below the calibration range, so their randomized p-values stay above `alpha` and
+cannot drive BH discoveries; high-shift inlier weights are capped only to enforce
+this guardrail. Anomalies are placed above the calibration range, so their
+intervals are determined only by their weighted self-atoms.
 
-The plotted theorem curve is conditional on the frozen intervals. Each anomaly
-p-value is assigned to the BH threshold bins `alpha * k / m`; a dynamic program
-over these independent categorical variables gives the exact distribution of
-the BH anomaly discovery count. The observed histogram should match this curve
-up to Monte Carlo error.
+The central diagnostic is the rank interval ratio,
 
-The summary also records observed and theorem means and variances of the BH
-discovery count, which makes the randomization-driven variance inflation visible
-without changing the fixed score separation or fixed weights.
+```text
+min_r U_(r) / (alpha * r / m),
+```
+
+where `U_(r)` is the `r`-th smallest anomaly interval upper endpoint. Larger
+values mean the randomization intervals are wide relative to the BH scale. The
+frontier panels show that the conditional interval theorem predicts both miss
+probability and discovery-count variance across fixed weight worlds.
 """,
         encoding="utf-8",
     )
 
 
-def export_tikz_csvs(setups: list[FixedSetup], distribution: pd.DataFrame) -> None:
-    export_interval_tikz(setups)
-    export_distribution_tikz(distribution)
+def export_tikz_csvs(worlds: list[FixedWorld], summary: pd.DataFrame) -> None:
+    export_interval_tikz(worlds, summary)
+    export_frontier_tikz(summary)
 
 
 def validate_outputs() -> None:
@@ -715,11 +927,11 @@ def main() -> None:
             "savefig.dpi": 220,
         }
     )
-    setups = build_fixed_setups()
-    summary, distribution = load_or_build_results(setups)
+    worlds = build_fixed_worlds()
+    summary, distribution = load_or_build_results(worlds)
     validate_results(summary, distribution)
-    plot_figure(setups, summary, distribution)
-    export_tikz_csvs(setups, distribution)
+    plot_figure(worlds, summary)
+    export_tikz_csvs(worlds, summary)
     write_rationale()
     validate_outputs()
     print(SUMMARY_PATH)
