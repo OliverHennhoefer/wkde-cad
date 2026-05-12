@@ -51,8 +51,22 @@ class Figure4ClippingFrontierTest(unittest.TestCase):
 
         self.assertLess(tight["max_test_self_atom"], loose["max_test_self_atom"])
         self.assertGreater(tight["calib_ess"], loose["calib_ess"])
+        self.assertGreater(tight["max_test_self_atom_to_bh_threshold"], 0.0)
+        self.assertGreater(tight["log10_inverse_max_test_self_atom"], 0.0)
 
-    def test_tiny_run_writes_outputs_and_valid_summary(self):
+    def test_unclipped_tv_is_zero_and_tight_clipping_has_larger_tv(self):
+        self.assertAlmostEqual(
+            figure4.clipped_target_tv(cap=np.inf, rho=1.5),
+            0.0,
+        )
+
+        tight = figure4.clipped_target_tv(cap=1.0, rho=1.5)
+        loose = figure4.clipped_target_tv(cap=89.0, rho=1.5)
+
+        self.assertGreater(tight, loose)
+        self.assertGreater(loose, 0.0)
+
+    def test_tiny_run_writes_outputs_and_valid_multi_rho_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             path_patches = {
@@ -64,6 +78,7 @@ class Figure4ClippingFrontierTest(unittest.TestCase):
                 "RATIONALE_PATH": root / "RATIONALE.md",
             }
             value_patches = {
+                "RHO_VALUES": [0.5, 1.5],
                 "N_CAL": 40,
                 "M": 60,
                 "N_SEEDS": 4,
@@ -81,39 +96,61 @@ class Figure4ClippingFrontierTest(unittest.TestCase):
                 self.assertTrue(Path(path).exists(), path)
 
             summary = pd.read_csv(path_patches["SUMMARY_PATH"])
-            self.assertEqual(
-                list(summary["clip_cap_label"]),
-                ["c=1", "c=2", "unclipped"],
-            )
+            self.assertEqual(len(summary), 2 * 3)
             self.assertEqual(set(summary["summary_version"]), {figure4.SUMMARY_VERSION})
+            self.assertEqual(set(summary["rho"]), {0.5, 1.5})
+            for rho in [0.5, 1.5]:
+                labels = list(
+                    summary[summary["rho"].eq(rho)]
+                    .sort_values("clip_order")["clip_cap_label"]
+                )
+                self.assertEqual(labels, ["c=1", "c=2", "unclipped"])
+            self.assertFalse(summary.duplicated(["rho", "clip_cap_label"]).any())
             self.assertTrue((summary["max_test_self_atom_mean"] > 0.0).all())
             self.assertTrue((summary["calib_ess_fraction_mean"] <= 1.0).all())
+            self.assertTrue((summary["bh_first_threshold"] > 0.0).all())
+            self.assertTrue(
+                (summary["max_test_self_atom_to_bh_threshold_mean"] > 0.0).all()
+            )
 
-            clipped = summary[summary["clip_cap_label"].eq("c=1")].iloc[0]
-            unclipped = summary[summary["clip_cap_label"].eq("unclipped")].iloc[0]
-            self.assertLess(
-                clipped["max_test_self_atom_mean"],
-                unclipped["max_test_self_atom_mean"],
-            )
-            self.assertGreater(
-                clipped["calib_ess_fraction_mean"],
-                unclipped["calib_ess_fraction_mean"],
-            )
-            self.assertGreater(
-                clipped["oracle_tail_mismatch_mean_abs_log10"],
-                unclipped["oracle_tail_mismatch_mean_abs_log10"],
-            )
+            for rho in [0.5, 1.5]:
+                block = summary[summary["rho"].eq(rho)]
+                clipped = block[block["clip_cap_label"].eq("c=1")].iloc[0]
+                unclipped = block[block["clip_cap_label"].eq("unclipped")].iloc[0]
+                self.assertLess(
+                    clipped["max_test_self_atom_mean"],
+                    unclipped["max_test_self_atom_mean"],
+                )
+                self.assertGreater(
+                    clipped["calib_ess_fraction_mean"],
+                    unclipped["calib_ess_fraction_mean"],
+                )
+                self.assertGreater(
+                    clipped["oracle_tail_mismatch_mean_abs_log10"],
+                    unclipped["oracle_tail_mismatch_mean_abs_log10"],
+                )
+                self.assertGreater(clipped["clipped_target_tv"], 0.0)
+                self.assertAlmostEqual(unclipped["clipped_target_tv"], 0.0)
+
+            table = pd.read_csv(path_patches["TABLE_PATH"])
+            self.assertEqual(len(table), 2 * 3)
+            self.assertEqual(set(table["setting"]), {
+                "tightest_clip",
+                "middle_cap",
+                "unclipped_or_largest_cap",
+            })
 
             tikz = pd.read_csv(path_patches["TIKZ_PATH"])
-            self.assertEqual(
-                set(tikz["metric"]),
+            self.assertTrue(
                 {
                     "max_test_self_atom",
                     "calib_ess_fraction",
                     "oracle_tail_mismatch",
-                    "oracle_abs_tail_bias",
-                },
+                    "clipped_target_tv",
+                    "frontier_oracle_tail_mismatch",
+                }.issubset(set(tikz["metric"]))
             )
+            self.assertEqual(set(tikz["panel"]), {"A", "B", "C"})
 
 
 if __name__ == "__main__":

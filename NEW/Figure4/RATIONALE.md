@@ -1,8 +1,8 @@
 # Figure 4 Rationale: Clipping Frontier
 
-This figure is a controlled mechanism experiment. It asks whether clipping
-oracle covariate-shift weights removes the weighted conformal resolution
-problem, or merely changes the trade-off.
+This figure is a controlled mechanism experiment, not a new method benchmark.
+It asks whether clipping oracle covariate-shift weights removes weighted
+conformal resolution collapse or merely changes the target distribution.
 
 Calibration null scores are drawn from `P: Z ~ N(0, 1)`. Shifted null scores are
 drawn from `Q_rho: Z ~ N(rho, 1)`, and the anomaly score is `S = Z`. The oracle
@@ -18,35 +18,24 @@ For a clipping cap `c`, the experiment uses
 w_c(z) = min(w(z), c)
 ```
 
-on both calibration and shifted-null test points.
+on both calibration and shifted-null test points. This improves resolution by
+reducing large self-atoms in weighted conformal p-values and raising calibration
+effective sample size.
 
-The resolution diagnostic is the largest shifted-null self-atom,
-
-```text
-max_j w_c(Z_j^test) / (sum_i w_c(Z_i^cal) + w_c(Z_j^test)).
-```
-
-Smaller values mean the weighted conformal p-values can attain finer small
-p-values. Clipping lowers this atom and raises the calibration effective sample
-size because it suppresses extreme weights.
-
-The adaptation diagnostic compares the normalized clipped target tail
+The cost is that clipping no longer adapts to the true shifted null `Q`. It
+instead targets
 
 ```text
-T_c(s) = E_P[min(w(Z), c) 1{Z >= s}] / E_P[min(w(Z), c)]
+Q_c(dz) propto min(w(z), c) P(dz).
 ```
 
-against the true shifted-null tail
+The theorem-facing adaptation cost is therefore the distance between `Q` and
+`Q_c`. The summary records the clipped target normalizer, the reference and
+shifted mass where `w > c`, and the total variation gap
+`TV(Q, Q_c)`.
 
-```text
-T_Q(s) = P_Q(Z >= s).
-```
-
-The main adaptation curve is the mean absolute log mismatch
-`mean_s |log10(T_c(s) / T_Q(s))|` over a fixed shifted-null tail grid. The CSV
-also records signed and absolute target-Q tail bias, plus finite-sample
-weighted-tail bias from simulated calibration samples.
-
-The point is that clipping improves finite-sample resolution by changing the
-target distribution away from `Q`. It changes the frontier; it does not remove
-the resolution-adaptation trade-off.
+The plotted frontier makes the trade-off explicit. Tight caps move leftward in
+Panel C by lowering max atom mass, but they move upward by increasing oracle
+shifted-null tail mismatch. The unclipped point has zero target mismatch but can
+have poor finite-sample resolution. Thus clipping changes the
+adaptation-resolution frontier; it does not remove it.
