@@ -1,0 +1,3 @@
+export_version,figure,panel,panel_title,plot_order,point_index,group,method,scenario,kappa,m,x,y,value,probability,count,style_key,label
+tikz-v2,figure2,C,Detectability ratio calibration,1,1,reference,,baseline,,,0.0,-0.03,,,,vertical_zero,$\delta_{min}=1$
+tikz-v2,figure2,C,Detectability ratio calibration,2,2,reference,,baseline,,,0.0,1.03,,,,vertical_zero,$\delta_{min}=1$

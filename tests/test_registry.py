@@ -4,7 +4,7 @@ from pyod.models.hbos import HBOS
 from pyod.models.iforest import IForest
 from pyod.models.inne import INNE
 
-from src.utils.registry import get_model_instance
+from src.scripts.empirical_benchmark.utils.registry import get_model_instance
 
 
 class RegistryTest(unittest.TestCase):

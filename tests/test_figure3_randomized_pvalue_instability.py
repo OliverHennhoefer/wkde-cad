@@ -6,10 +6,14 @@ from unittest import mock
 import numpy as np
 import pandas as pd
 
-from NEW.Figure3 import figure3_randomized_pvalue_instability as figure3
+from src.scripts import figure3_randomized_pvalue_instability as figure3
 
 
 class Figure3RandomizedPvalueInstabilityTest(unittest.TestCase):
+    def test_default_output_dir_is_under_outputs(self):
+        self.assertEqual(figure3.OUT_DIR.name, "figure3")
+        self.assertEqual(figure3.OUT_DIR.parent.name, "outputs")
+
     def test_randomized_pvalue_intervals_match_weighted_formula(self):
         sorted_calib_scores = np.array([0.0, 1.0, 2.0])
         sorted_calib_weights = np.array([1.0, 2.0, 3.0])
@@ -81,6 +85,7 @@ class Figure3RandomizedPvalueInstabilityTest(unittest.TestCase):
                 "N_RANDOMIZATIONS": 5000,
                 "SIMULATION_BATCH_SIZE": 1000,
                 "FRONTIER_BINS": 3,
+                "tqdm": lambda iterable, **kwargs: iterable,
             }
 
             with mock.patch.multiple(figure3, **path_patches), mock.patch.multiple(

@@ -1,0 +1,4 @@
+export_version,figure,panel,panel_title,plot_order,object_type,x,y,x_end,y_end,style_key,label
+tikz-v3,figure1,A,Unweighted Gaussian baseline,2,arrow,2.35,0.15,2.35,3.5,anomaly_direction_arrow,anomaly direction
+tikz-v3,figure1,A,Unweighted Gaussian baseline,3,text,-3.1,4.85,,,text,score $S=T$
+tikz-v3,figure1,A,Unweighted Gaussian baseline,4,text,-3.1,4.45,,,text,unweighted exchangeable inliers

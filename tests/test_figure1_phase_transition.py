@@ -6,7 +6,7 @@ from unittest import mock
 import numpy as np
 import pandas as pd
 
-from NEW.Figure1 import figure1_phase_transition as figure1
+from src.scripts import figure1_phase_transition as figure1
 
 
 class InlineExecutor:
@@ -72,6 +72,10 @@ def reference_weighted_cs_decisions(
 
 
 class Figure1PhaseTransitionTest(unittest.TestCase):
+    def test_default_output_root_is_under_outputs(self):
+        self.assertEqual(figure1.OUT_ROOT.name, "figure1")
+        self.assertEqual(figure1.OUT_ROOT.parent.name, "outputs")
+
     def test_standard_tail_p_values_and_bh_decisions(self):
         sorted_calib_scores = np.array([0.0, 1.0, 2.0])
 
@@ -295,6 +299,7 @@ class Figure1PhaseTransitionTest(unittest.TestCase):
                 "WEIGHTED_HEATMAP_RHO_CANDIDATES": [0.5, 1.0],
                 "COLLAPSE_BINS": np.linspace(-2.0, 3.0, 6),
                 "ProcessPoolExecutor": InlineExecutor,
+                "tqdm": lambda iterable, **kwargs: iterable,
             }
 
             with mock.patch.multiple(figure1, **patches):

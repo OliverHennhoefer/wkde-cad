@@ -1,14 +1,33 @@
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
 
 import pandas as pd
 
-from src.scripts import plot_covariate_shift
+from src.scripts.empirical_benchmark import experiment, plot_covariate_shift
 
 
 class ConfigScriptTest(unittest.TestCase):
+    def test_empirical_benchmark_default_outputs_are_under_outputs_root(self):
+        with open(experiment.DEFAULT_CONFIG, "rb") as config_file:
+            cfg = tomllib.load(config_file)
+
+        self.assertEqual(
+            cfg["experiment"]["output_dir"],
+            "outputs/empirical_benchmark/results/logistic",
+        )
+        self.assertEqual(
+            cfg["model_selection"]["output_dir"],
+            "outputs/empirical_benchmark/model_selection",
+        )
+        self.assertEqual(
+            cfg["plots"]["output_dir"],
+            "outputs/empirical_benchmark/plots",
+        )
+        self.assertEqual(cfg["conformal"]["split_calib"], 0.5)
+
     def test_plot_covariate_shift_reads_restructured_config_sections(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

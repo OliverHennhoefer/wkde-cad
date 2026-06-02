@@ -1,0 +1,3 @@
+export_version,figure,panel,panel_title,plot_order,object_type,x,y,x_end,y_end,style_key,label
+tikz-v2,figure2,A,Perfect score separation,1,vertical_line,2.954724505461876,0.1,2.954724505461876,0.68,max_calibration_score,$\max_i S_i^{cal}$
+tikz-v2,figure2,A,Perfect score separation,2,text,3.014724505461876,0.61,,,text,$\max_i S_i^{cal}$

@@ -4,7 +4,7 @@ from contextlib import redirect_stdout
 
 import pandas as pd
 
-from src.scripts import covariate_shift_summary
+from src.scripts.empirical_benchmark import covariate_shift_summary
 
 
 def _rows_for(approach: str, fdr_values: list[float]) -> list[dict[str, object]]:
@@ -37,7 +37,7 @@ def _summary_frame() -> pd.DataFrame:
         [
             *_rows_for("empirical", [0.02, 0.02, 0.02]),
             *_rows_for("empirical_randomized", [0.0, 0.2]),
-            *_rows_for("probabilistic", [0.2, 0.2, 0.2]),
+            *_rows_for("empirical_weighted", [0.2, 0.2, 0.2]),
         ]
     )
 
@@ -59,8 +59,8 @@ class CovariateShiftSummaryTest(unittest.TestCase):
         self.assertEqual(symbols["empirical"], "+")
         self.assertEqual(controls["empirical_randomized"], "inconclusive")
         self.assertEqual(symbols["empirical_randomized"], "=")
-        self.assertEqual(controls["probabilistic"], "violated")
-        self.assertEqual(symbols["probabilistic"], "-")
+        self.assertEqual(controls["empirical_weighted"], "violated")
+        self.assertEqual(symbols["empirical_weighted"], "-")
 
     def test_table_output_includes_fdr_control_symbol_column(self):
         summary = covariate_shift_summary.compute_summary(
@@ -93,7 +93,7 @@ class CovariateShiftSummaryTest(unittest.TestCase):
         self.assertIn("fdr_control_symbol", rendered.columns)
         self.assertEqual(
             rendered.loc[
-                rendered["approach"] == "probabilistic",
+                rendered["approach"] == "empirical_weighted",
                 "fdr_control_symbol",
             ].iloc[0],
             "-",

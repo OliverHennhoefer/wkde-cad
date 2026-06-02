@@ -1,0 +1,5 @@
+export_version,figure,panel,panel_title,plot_order,object_type,x,y,x_end,y_end,style_key,label
+tikz-v3,figure1,A,Controlled Gaussian shift,1,arrow,0.1,-2.7,1.5,-2.7,covariate_shift_arrow,benign covariate shift
+tikz-v3,figure1,A,Controlled Gaussian shift,2,arrow,3.85,0.15,3.85,3.5,anomaly_direction_arrow,anomaly direction
+tikz-v3,figure1,A,Controlled Gaussian shift,3,text,-3.1,4.85,,,text,score $S=T$
+tikz-v3,figure1,A,Controlled Gaussian shift,4,text,-3.1,4.45,,,text,weights depend on $Z$

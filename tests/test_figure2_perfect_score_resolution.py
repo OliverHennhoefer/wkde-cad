@@ -6,7 +6,7 @@ from unittest import mock
 import numpy as np
 import pandas as pd
 
-from NEW.Figure2 import figure2_perfect_score_resolution as figure2
+from src.scripts import figure2_perfect_score_resolution as figure2
 
 
 class InlineExecutor:
@@ -24,6 +24,10 @@ class InlineExecutor:
 
 
 class Figure2PerfectScoreResolutionTest(unittest.TestCase):
+    def test_default_output_dir_is_under_outputs(self):
+        self.assertEqual(figure2.OUT_DIR.name, "figure2")
+        self.assertEqual(figure2.OUT_DIR.parent.name, "outputs")
+
     def test_tiny_run_writes_supported_phase_grid_and_outputs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -68,6 +72,7 @@ class Figure2PerfectScoreResolutionTest(unittest.TestCase):
                 "LOG_ESS_BINS": np.linspace(0.0, 2.0, 5),
                 "DELTA_BINS": np.linspace(-2.0, 2.0, 9),
                 "ProcessPoolExecutor": InlineExecutor,
+                "tqdm": lambda iterable, **kwargs: iterable,
             }
 
             with mock.patch.multiple(figure2, **path_patches), mock.patch.multiple(

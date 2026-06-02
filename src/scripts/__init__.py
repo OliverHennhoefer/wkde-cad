@@ -1,1 +1,1 @@
-# Scripts for summarizing experiment results
+# Main figure experiment scripts.

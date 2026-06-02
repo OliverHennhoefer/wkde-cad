@@ -5,10 +5,11 @@ from unittest import mock
 
 import numpy as np
 import pandas as pd
+from nonconform import Split
 
-import src.experiment as experiment
-import src.model_selection as model_selection
-from src.utils.splits import (
+from src.scripts.empirical_benchmark import experiment
+from src.scripts.empirical_benchmark import model_selection
+from src.scripts.empirical_benchmark.utils.splits import (
     ModelSelectionEvaluationSplit,
     split_model_selection_evaluation,
 )
@@ -34,13 +35,13 @@ def _cfg(meta_seeds=2):
         },
         "conformal": {
             "fdr_rate": 0.1,
-            "n_bootstraps": 2,
-            "n_trials": 2,
+            "split_calib": 0.5,
             "pruning": "homogeneous",
         },
         "weighting": {
             "mode": "oracle",
             "estimator": "forest",
+            "n_bootstraps": 2,
         },
         "covariate_shift": {
             "propensity_min": 0.3,
@@ -92,6 +93,24 @@ class DeterministicDetector:
 class FailingDetector(DeterministicDetector):
     def fit(self, x_train):
         raise ValueError("fit failed")
+
+
+class InlinePool:
+    def __init__(self, jobs):
+        self.jobs = jobs
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+    def imap(self, func, iterable):
+        return map(func, iterable)
+
+
+def passthrough_tqdm(iterable, **kwargs):
+    return iterable
 
 
 class SharedModelSelectionTest(unittest.TestCase):
@@ -162,7 +181,7 @@ class SharedModelSelectionTest(unittest.TestCase):
             logger = mock.Mock()
 
             with mock.patch(
-                "src.model_selection.load",
+                "src.scripts.empirical_benchmark.model_selection.load",
                 side_effect=AssertionError("load should not be called"),
             ):
                 model_selection.run_model_selection(
@@ -226,10 +245,16 @@ class SharedModelSelectionTest(unittest.TestCase):
             cfg = _cfg()
             cfg["model_selection"]["models"] = ["linear", "hbos"]
             with (
-                mock.patch("src.model_selection.get_dataset_enum", return_value="demo"),
-                mock.patch("src.model_selection.load", return_value=_dataframe()),
                 mock.patch(
-                    "src.model_selection.process_seed_phase1",
+                    "src.scripts.empirical_benchmark.model_selection.get_dataset_enum",
+                    return_value="demo",
+                ),
+                mock.patch(
+                    "src.scripts.empirical_benchmark.model_selection.load",
+                    return_value=_dataframe(),
+                ),
+                mock.patch(
+                    "src.scripts.empirical_benchmark.model_selection.process_seed_phase1",
                     side_effect=write_seed_csv,
                 ) as process_seed_phase1,
             ):
@@ -277,10 +302,16 @@ class SharedModelSelectionTest(unittest.TestCase):
             output_dir = Path(tmp)
 
             with (
-                mock.patch("src.model_selection.get_dataset_enum", return_value="demo"),
-                mock.patch("src.model_selection.load", return_value=_dataframe()),
                 mock.patch(
-                    "src.model_selection.process_seed_phase1",
+                    "src.scripts.empirical_benchmark.model_selection.get_dataset_enum",
+                    return_value="demo",
+                ),
+                mock.patch(
+                    "src.scripts.empirical_benchmark.model_selection.load",
+                    return_value=_dataframe(),
+                ),
+                mock.patch(
+                    "src.scripts.empirical_benchmark.model_selection.process_seed_phase1",
                     side_effect=write_seed_csv,
                 ),
             ):
@@ -297,6 +328,63 @@ class SharedModelSelectionTest(unittest.TestCase):
             self.assertEqual(merged["seed"].tolist(), [2, 1])
             self.assertFalse((output_dir / "demo_seed2.csv").exists())
             self.assertFalse((output_dir / "demo_seed1.csv").exists())
+
+    def test_model_selection_parallel_branch_uses_ordered_imap_progress(self):
+        def write_seed_csv(
+            seed,
+            ds_name,
+            normal,
+            anomaly,
+            empirical_anomaly_rate,
+            models,
+            cfg,
+            output_dir,
+        ):
+            pd.DataFrame(
+                [
+                    {
+                        "seed": seed,
+                        "dataset": ds_name,
+                        "model": models[0],
+                        "fold": "mean",
+                        "prauc": float(seed),
+                        "rocauc": float(seed),
+                        "brier": 0.0,
+                        "is_best": True,
+                    }
+                ]
+            ).to_csv(output_dir / f"{ds_name}_seed{seed}.csv", index=False)
+            return ds_name, seed, models[0]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            with (
+                mock.patch(
+                    "src.scripts.empirical_benchmark.model_selection.get_dataset_enum",
+                    return_value="demo",
+                ),
+                mock.patch(
+                    "src.scripts.empirical_benchmark.model_selection.load",
+                    return_value=_dataframe(),
+                ),
+                mock.patch(
+                    "src.scripts.empirical_benchmark.model_selection.process_seed_phase1",
+                    side_effect=write_seed_csv,
+                ),
+                mock.patch.object(model_selection.mp, "Pool", InlinePool),
+                mock.patch.object(model_selection, "tqdm", passthrough_tqdm),
+            ):
+                model_selection.run_model_selection(
+                    cfg=_cfg(),
+                    datasets=["demo"],
+                    seeds=[2, 1],
+                    output_dir=output_dir,
+                    jobs=2,
+                    logger=mock.Mock(),
+                )
+
+            merged = pd.read_csv(output_dir / "demo.csv")
+            self.assertEqual(merged["seed"].tolist(), [2, 1])
 
     def test_model_selection_uses_only_model_selection_pools(self):
         data = _dataframe()
@@ -328,7 +416,7 @@ class SharedModelSelectionTest(unittest.TestCase):
                     side_effect=fake_split,
                 ),
                 mock.patch(
-                    "src.model_selection.get_model_instance",
+                    "src.scripts.empirical_benchmark.model_selection.get_model_instance",
                     return_value=DeterministicDetector(),
                 ),
             ):
@@ -354,7 +442,7 @@ class SharedModelSelectionTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             with mock.patch(
-                "src.model_selection.get_model_instance",
+                "src.scripts.empirical_benchmark.model_selection.get_model_instance",
                 side_effect=model_factory,
             ):
                 result = model_selection.process_seed_phase1(
@@ -394,7 +482,7 @@ class SharedModelSelectionTest(unittest.TestCase):
             }
 
             with mock.patch(
-                "src.model_selection.get_model_instance",
+                "src.scripts.empirical_benchmark.model_selection.get_model_instance",
                 return_value=DeterministicDetector(),
             ):
                 result1 = model_selection.process_seed_phase1(
@@ -594,6 +682,29 @@ class SharedModelSelectionTest(unittest.TestCase):
         for key, value in audit.items():
             self.assertEqual(row[key], value)
 
+    def test_empirical_approaches_use_split_calibration_and_no_density_branch(
+        self,
+    ):
+        approaches = experiment._build_approaches(
+            cfg=_cfg(),
+            weight_mode="oracle",
+            train_weights=np.ones(3),
+            test_weights=np.ones(2),
+        )
+
+        self.assertEqual(
+            set(approaches),
+            {
+                "empirical",
+                "empirical_randomized",
+                "empirical_weighted",
+                "empirical_randomized_weighted",
+            },
+        )
+        for approach in approaches.values():
+            self.assertIsInstance(approach["strategy"], Split)
+            self.assertEqual(approach["strategy"].calib_size, 0.5)
+
     def test_process_shift_seed_skips_failed_detector_without_crashing(self):
         cfg = _cfg()
         cfg["splits"]["train_split"] = 0.5
@@ -694,8 +805,8 @@ class SharedModelSelectionTest(unittest.TestCase):
                     approaches_to_run=[
                         "empirical",
                         "empirical_randomized",
-                        "probabilistic",
                         "empirical_weighted",
+                        "empirical_randomized_weighted",
                     ],
                     output_dir=output_dir,
                     force=False,
@@ -710,13 +821,92 @@ class SharedModelSelectionTest(unittest.TestCase):
                     [
                         "empirical",
                         "empirical_randomized",
-                        "probabilistic",
                         "empirical_weighted",
+                        "empirical_randomized_weighted",
                     ],
                 ),
-                (1.0, ["empirical_weighted"]),
+                (1.0, ["empirical_weighted", "empirical_randomized_weighted"]),
             ],
         )
+
+    def test_covariate_shift_parallel_branch_uses_ordered_imap_progress(self):
+        def write_selection_csv(cfg, datasets, seeds, output_dir, jobs, logger):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            pd.DataFrame(
+                [
+                    {
+                        "seed": seed,
+                        "dataset": datasets[0],
+                        "model": "linear",
+                        "fold": "mean",
+                        "prauc": 1.0,
+                        "rocauc": 1.0,
+                        "brier": 0.0,
+                        "is_best": True,
+                    }
+                    for seed in seeds
+                ]
+            ).to_csv(output_dir / f"{datasets[0]}.csv", index=False)
+
+        def fake_process_shift_seed(
+            seed,
+            severity,
+            model_name,
+            ds_name,
+            normal,
+            anomaly,
+            cfg,
+            approaches_to_run,
+            pruning_method,
+            split_audit,
+        ):
+            return [
+                {
+                    "seed": seed,
+                    "dataset": ds_name,
+                    "model": model_name,
+                    "approach": approaches_to_run[0],
+                    "severity": severity,
+                    "train_size": 1,
+                    "test_size": 1,
+                    "fdr": 0.0,
+                    "power": 1.0,
+                }
+            ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            output_dir = repo_root / "outputs" / "experiment_results"
+            with (
+                mock.patch.object(experiment, "REPO_ROOT", repo_root),
+                mock.patch.object(
+                    experiment,
+                    "run_model_selection",
+                    side_effect=write_selection_csv,
+                ),
+                mock.patch.object(experiment, "get_dataset_enum", return_value="demo"),
+                mock.patch.object(experiment, "load", return_value=_dataframe()),
+                mock.patch.object(
+                    experiment,
+                    "process_shift_seed",
+                    side_effect=fake_process_shift_seed,
+                ),
+                mock.patch.object(experiment.mp, "Pool", InlinePool),
+                mock.patch.object(experiment, "tqdm", passthrough_tqdm),
+            ):
+                experiment.run_experiment(
+                    cfg=_cfg(meta_seeds=2),
+                    datasets=["demo"],
+                    seeds=[1, 2],
+                    severities=[0.0],
+                    approaches_to_run=["empirical"],
+                    output_dir=output_dir,
+                    force=False,
+                    jobs=2,
+                )
+
+            results = pd.read_csv(output_dir / "demo.csv")
+            self.assertEqual(results["seed"].tolist(), [1, 2])
 
     def test_covariate_shift_skips_nonzero_severity_when_only_unweighted_methods_apply(
         self,

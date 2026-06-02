@@ -7,10 +7,14 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
-from NEW.Figure4 import figure4_clipping_frontier as figure4
+from src.scripts import figure4_clipping_frontier as figure4
 
 
 class Figure4ClippingFrontierTest(unittest.TestCase):
+    def test_default_output_dir_is_under_outputs(self):
+        self.assertEqual(figure4.OUT_DIR.name, "figure4")
+        self.assertEqual(figure4.OUT_DIR.parent.name, "outputs")
+
     def test_unclipped_analytic_tail_equals_shifted_null_tail(self):
         rho = 1.2
         scores = np.array([-1.0, 0.0, 1.0, 2.5, 4.0])
@@ -84,6 +88,7 @@ class Figure4ClippingFrontierTest(unittest.TestCase):
                 "N_SEEDS": 4,
                 "CLIP_CAPS": [1.0, 2.0, np.inf],
                 "TAIL_PROBS": np.array([0.5, 0.1, 0.01]),
+                "tqdm": lambda iterable, **kwargs: iterable,
             }
 
             with mock.patch.multiple(figure4, **path_patches), mock.patch.multiple(

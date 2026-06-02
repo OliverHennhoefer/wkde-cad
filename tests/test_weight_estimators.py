@@ -6,7 +6,9 @@ from nonconform.weighting import forest_weight_estimator
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
-from src.utils.weight_estimators import build_weight_estimator
+from src.scripts.empirical_benchmark.utils.weight_estimators import (
+    build_weight_estimator,
+)
 
 
 class WeightEstimatorFactoryTest(unittest.TestCase):

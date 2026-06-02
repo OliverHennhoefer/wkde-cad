@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.scripts import fdr_table
+from src.scripts.empirical_benchmark import fdr_table
 
 
 def _result_frame(fdr_values, power_values=None) -> pd.DataFrame:
@@ -16,7 +16,7 @@ def _result_frame(fdr_values, power_values=None) -> pd.DataFrame:
             {
                 "seed": seed,
                 "dataset": "demo",
-                "approach": "probabilistic_weighted",
+                "approach": "empirical_weighted",
                 "severity": 0.0,
                 "weight_mode": "estimated",
                 "fdr": fdr,
@@ -30,9 +30,10 @@ def _result_frame(fdr_values, power_values=None) -> pd.DataFrame:
 def _approach_frame() -> pd.DataFrame:
     rows = []
     for approach in [
+        "empirical",
+        "empirical_randomized",
         "empirical_weighted",
         "empirical_randomized_weighted",
-        "probabilistic_weighted",
     ]:
         for seed in [1, 2, 3]:
             rows.append(
@@ -136,9 +137,10 @@ class FdrTableTest(unittest.TestCase):
         self.assertEqual(
             summary["approach"].tolist(),
             [
+                "empirical",
+                "empirical_randomized",
                 "empirical_weighted",
                 "empirical_randomized_weighted",
-                "probabilistic_weighted",
             ],
         )
 
