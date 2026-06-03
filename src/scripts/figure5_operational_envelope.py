@@ -37,14 +37,17 @@ EMPIRICAL_RESULTS_DIR = (
     REPO_ROOT / "outputs" / "empirical_benchmark" / "results" / "logistic"
 )
 
-SUMMARY_VERSION = "operational-envelope-v1"
-REQUIRED_ESS_VERSION = "required-ess-v1"
+SUMMARY_VERSION = "operational-envelope-v2"
+REQUIRED_ESS_VERSION = "required-ess-v2"
 EMPIRICAL_PROJECTION_VERSION = "empirical-projection-v1"
 TIKZ_EXPORT_VERSION = "tikz-v1"
 BASE_SEED = 20260518
 
 D = 10
-FINITE_KAPPA = 3.0
+FINITE_KAPPAS = {
+    "finite_k1": 1.0,
+    "finite_k3": 3.0,
+}
 DELTA_SCORE = 1.0
 N_EFF_BINS = np.linspace(1.3, 3.7, 13)
 RHO_CANDIDATES = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
@@ -62,13 +65,14 @@ BASELINE_ALPHA = 0.10
 BASELINE_PI1 = 0.05
 BASELINE_M = 1000
 BASELINE_N_ANOMALY = 10
-BASELINE_MARK_N_EFF = 500.0
 POWER_TARGET = 0.80
+RANK_BOUNDARY_COLOR = "#E53935"
+RANK_BOUNDARY_LINEWIDTH = 2.4
 
 DEFAULT_WORKERS = max(1, (os.cpu_count() or 2) - 1)
 DEFAULT_WCS_BATCH_SIZE = 512
 DEFAULT_CELL_TRIALS = 100
-SCORE_REGIMES = ("perfect", "finite")
+SCORE_REGIMES = ("perfect", "finite_k1", "finite_k3")
 
 
 @dataclass(frozen=True)
@@ -312,6 +316,14 @@ def n_anomaly_for(m: int, pi1: float | None, n_anomaly_fixed: int | None) -> int
     return min(max(1, value), max(1, m - 1))
 
 
+def score_label(score_regime: str) -> str:
+    if score_regime == "perfect":
+        return "perfect score"
+    if score_regime in FINITE_KAPPAS:
+        return rf"finite score ($\kappa={FINITE_KAPPAS[score_regime]:g}$)"
+    raise ValueError(f"Unknown score regime: {score_regime}")
+
+
 def simulate_trial(
     *,
     alpha: float,
@@ -369,7 +381,7 @@ def simulate_trial(
             anomaly_score_value = max(max_calib_score, float(np.max(inlier_scores))) + DELTA_SCORE
             anomaly_scores = np.full(n_anomaly, anomaly_score_value)
         else:
-            anomaly_scores = FINITE_KAPPA + anomaly_noise
+            anomaly_scores = FINITE_KAPPAS[regime] + anomaly_noise
         test_scores = np.concatenate([inlier_scores, anomaly_scores])
         p_values = weighted_tail_p_values(
             sorted_calib_scores,
@@ -844,6 +856,83 @@ def heatmap_matrix(
     return x_edges, y_edges, matrix
 
 
+def rank_boundary_points(
+    x_edges: np.ndarray,
+    y_edges: np.ndarray,
+    rank_delta: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    x_centers = (x_edges[:-1] + x_edges[1:]) / 2.0
+    y_centers = (y_edges[:-1] + y_edges[1:]) / 2.0
+    points: list[tuple[float, float]] = []
+    for x_value, column in zip(x_centers, rank_delta):
+        values = np.asarray(column, dtype=float)
+        finite = np.isfinite(values)
+        if int(np.sum(finite)) < 2:
+            continue
+        y_values = y_centers[finite]
+        values = values[finite]
+        crossings = []
+        exact = np.flatnonzero(np.isclose(values, 0.0, atol=1e-12))
+        crossings.extend(float(y_values[idx]) for idx in exact)
+        for idx in range(len(values) - 1):
+            lower = float(values[idx])
+            upper = float(values[idx + 1])
+            if lower == upper:
+                continue
+            if (lower < 0.0 < upper) or (upper < 0.0 < lower):
+                y0 = float(y_values[idx])
+                y1 = float(y_values[idx + 1])
+                crossings.append(y0 + (0.0 - lower) * (y1 - y0) / (upper - lower))
+        if crossings:
+            points.append((float(x_value), float(np.mean(crossings))))
+
+    if len(points) < 2:
+        return None
+
+    x_line = np.array([point[0] for point in points], dtype=float)
+    y_line = np.array([point[1] for point in points], dtype=float)
+    order = np.argsort(x_line, kind="mergesort")
+    x_line = x_line[order]
+    y_line = y_line[order]
+
+    x_pad = 0.04 * float(x_edges[-1] - x_edges[0])
+    x_start = float(x_edges[0] - x_pad)
+    x_end = float(x_edges[-1] + x_pad)
+    if x_line[1] != x_line[0]:
+        slope = (y_line[1] - y_line[0]) / (x_line[1] - x_line[0])
+        first_x = float(x_line[0])
+        first_y = float(y_line[0])
+        x_line = np.insert(x_line, 0, x_start)
+        y_line = np.insert(y_line, 0, first_y + slope * (x_start - first_x))
+    if x_line[-1] != x_line[-2]:
+        slope = (y_line[-1] - y_line[-2]) / (x_line[-1] - x_line[-2])
+        last_x = float(x_line[-1])
+        last_y = float(y_line[-1])
+        x_line = np.append(x_line, x_end)
+        y_line = np.append(y_line, last_y + slope * (x_end - last_x))
+    return x_line, y_line
+
+
+def draw_rank_boundary(
+    ax: plt.Axes,
+    x_edges: np.ndarray,
+    y_edges: np.ndarray,
+    rank_delta: np.ndarray,
+) -> None:
+    points = rank_boundary_points(x_edges, y_edges, rank_delta)
+    if points is None:
+        return
+    x_line, y_line = points
+    ax.plot(
+        x_line,
+        y_line,
+        color=RANK_BOUNDARY_COLOR,
+        linewidth=RANK_BOUNDARY_LINEWIDTH,
+        solid_capstyle="round",
+        zorder=4,
+    )
+
+
 def format_tick(value: float) -> str:
     if value >= 1:
         return f"{int(value)}"
@@ -873,25 +962,16 @@ def add_certified_outlines(
             )
 
 
-def baseline_x_for_sweep(sweep: str) -> float:
-    if sweep in {"m_fixed_pi", "m_fixed_count"}:
-        return math.log10(BASELINE_M)
-    if sweep == "pi1_sweep":
-        return math.log10(BASELINE_PI1)
-    if sweep == "alpha_sweep":
-        return math.log10(BASELINE_ALPHA)
-    raise ValueError(f"Unknown sweep: {sweep}")
-
-
 def plot_power_atlas(summary: pd.DataFrame) -> None:
     specs = sweep_specs()
     fig, axes = plt.subplots(
-        2,
+        len(SCORE_REGIMES),
         len(specs),
-        figsize=(4.2 * len(specs), 8.6),
+        figsize=(4.2 * len(specs), 12.6),
         constrained_layout=True,
         sharey=True,
     )
+    axes = np.asarray(axes).reshape(len(SCORE_REGIMES), len(specs))
     mesh = None
     for col_idx, spec in enumerate(specs):
         x_tick_positions = [float(value) for value in spec["x_plots"]]
@@ -910,12 +990,6 @@ def plot_power_atlas(summary: pd.DataFrame) -> None:
                 score_regime=score_regime,
                 value_column="median_log10_rank_delta",
             )
-            _, _, certified = heatmap_matrix(
-                summary,
-                sweep=spec["name"],
-                score_regime=score_regime,
-                value_column="certified_no_rank_rate",
-            )
             mesh = ax.pcolormesh(
                 x_edges,
                 y_edges,
@@ -924,66 +998,28 @@ def plot_power_atlas(summary: pd.DataFrame) -> None:
                 norm=Normalize(vmin=0.0, vmax=1.0),
                 shading="flat",
             )
-            x_centers = (x_edges[:-1] + x_edges[1:]) / 2.0
-            y_centers = (y_edges[:-1] + y_edges[1:]) / 2.0
             if min(rank_delta.shape) >= 2:
-                ax.contour(
-                    x_centers,
-                    y_centers,
-                    rank_delta.T,
-                    levels=[0.0],
-                    colors="black",
-                    linewidths=1.1,
-                )
-                ax.contour(
-                    x_centers,
-                    y_centers,
-                    power.T,
-                    levels=[POWER_TARGET],
-                    colors="white",
-                    linewidths=1.0,
-                )
-            add_certified_outlines(ax, x_edges, y_edges, certified)
-            marker_x = baseline_x_for_sweep(spec["name"])
-            marker_y = math.log10(BASELINE_MARK_N_EFF)
-            if x_edges[0] <= marker_x <= x_edges[-1] and y_edges[0] <= marker_y <= y_edges[-1]:
-                ax.scatter(
-                    [marker_x],
-                    [marker_y],
-                    marker="*",
-                    s=85,
-                    facecolor="white",
-                    edgecolor="black",
-                    linewidth=0.7,
-                    zorder=5,
-                )
+                draw_rank_boundary(ax, x_edges, y_edges, rank_delta)
             ax.set_title(spec["title"] if row_idx == 0 else "")
             ax.set_xlabel(spec["x_label"])
             ax.set_xticks(x_tick_positions)
             ax.set_xticklabels(x_tick_labels, rotation=35, ha="right")
-            ax.grid(alpha=0.16, linewidth=0.5)
+            ax.grid(False)
+            ax.set_xlim(float(x_edges[0]), float(x_edges[-1]))
             ax.set_ylim(float(N_EFF_BINS[0]), float(N_EFF_BINS[-1]))
     for ax in axes[:, 0]:
         ax.set_ylabel(r"$\log_{10}$ calibration $N_{eff}$")
 
-    axes[0, 0].annotate(
-        "perfect score",
-        xy=(-0.24, 0.5),
-        xycoords="axes fraction",
-        rotation=90,
-        ha="right",
-        va="center",
-        fontsize=11,
-    )
-    axes[1, 0].annotate(
-        rf"finite score ($\kappa={FINITE_KAPPA:g}$)",
-        xy=(-0.24, 0.5),
-        xycoords="axes fraction",
-        rotation=90,
-        ha="right",
-        va="center",
-        fontsize=11,
-    )
+    for row_idx, score_regime in enumerate(SCORE_REGIMES):
+        axes[row_idx, 0].annotate(
+            score_label(score_regime),
+            xy=(-0.24, 0.5),
+            xycoords="axes fraction",
+            rotation=90,
+            ha="right",
+            va="center",
+            fontsize=11,
+        )
     cbar = fig.colorbar(mesh, ax=axes.ravel().tolist(), shrink=0.92)
     cbar.set_label("statistical power")
     fig.suptitle("Operational power atlas for weighted conformal CAD", fontsize=14)
@@ -1017,7 +1053,7 @@ def plot_required_ess(summary: pd.DataFrame) -> None:
     fig, axes = plt.subplots(
         len(SCORE_REGIMES),
         len(REQUIRED_ALPHA_VALUES),
-        figsize=(6.0 * len(REQUIRED_ALPHA_VALUES), 8.4),
+        figsize=(6.0 * len(REQUIRED_ALPHA_VALUES), 11.4),
         constrained_layout=True,
         sharex=True,
         sharey=True,
@@ -1061,9 +1097,7 @@ def plot_required_ess(summary: pd.DataFrame) -> None:
             ax.set_yticklabels([format_tick(float(value)) for value in REQUIRED_PI1_VALUES])
             ax.grid(alpha=0.16, linewidth=0.5)
         axes[row_idx, 0].set_ylabel(
-            "perfect score\nanomaly rate"
-            if score_regime == "perfect"
-            else rf"finite score ($\kappa={FINITE_KAPPA:g}$)" + "\nanomaly rate"
+            f"{score_label(score_regime)}\nanomaly rate"
         )
     for ax in axes[-1, :]:
         ax.set_xlabel(r"test batch size $m$")
@@ -1128,8 +1162,6 @@ def export_power_atlas_reference_tikz() -> None:
     rows = []
     for spec in sweep_specs():
         panel_col = [item["name"] for item in sweep_specs()].index(spec["name"]) + 1
-        marker_x = baseline_x_for_sweep(str(spec["name"]))
-        marker_y = math.log10(BASELINE_MARK_N_EFF)
         for score_regime in SCORE_REGIMES:
             panel_row = SCORE_REGIMES.index(score_regime) + 1
             panel = f"power_atlas_r{panel_row}_c{panel_col}"
@@ -1140,43 +1172,19 @@ def export_power_atlas_reference_tikz() -> None:
                     "panel": panel,
                     "panel_title": spec["title"],
                     "plot_order": panel_row * 100 + panel_col,
-                    "group": "default_setting_marker",
-                    "object_type": "point",
+                    "group": "contour_reference",
+                    "object_type": "contour_level",
                     "score_regime": score_regime,
                     "sweep": spec["name"],
-                    "x": marker_x,
-                    "y": marker_y,
+                    "x": "",
+                    "y": "",
                     "x_end": "",
                     "y_end": "",
-                    "value": "",
-                    "style_key": "default_setting",
-                    "label": "default empirical-benchmark scale",
+                    "value": 0.0,
+                    "style_key": "median_log10_rank_delta_zero",
+                    "label": "rank-aware boundary",
                 }
             )
-            for label, value, style_key in [
-                ("rank-aware boundary", 0.0, "median_log10_rank_delta_zero"),
-                ("80% power contour", POWER_TARGET, "power_target"),
-            ]:
-                rows.append(
-                    {
-                        "export_version": TIKZ_EXPORT_VERSION,
-                        "figure": "figure5",
-                        "panel": panel,
-                        "panel_title": spec["title"],
-                        "plot_order": panel_row * 100 + panel_col,
-                        "group": "contour_reference",
-                        "object_type": "contour_level",
-                        "score_regime": score_regime,
-                        "sweep": spec["name"],
-                        "x": "",
-                        "y": "",
-                        "x_end": "",
-                        "y_end": "",
-                        "value": value,
-                        "style_key": style_key,
-                        "label": label,
-                    }
-                )
     pd.DataFrame(rows).to_csv(POWER_ATLAS_REFERENCE_TIKZ_PATH, index=False)
 
 

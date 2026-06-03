@@ -148,7 +148,7 @@ Default parameters:
 - `PI1_VALUES`: `0.005 0.01 0.02 0.05 0.10 0.20`
 - `ALPHA_VALUES`: `0.01 0.025 0.05 0.10 0.20`
 - `REQUIRED_ALPHA_VALUES`: `0.05 0.10`
-- score regimes: perfect score and finite score with `kappa = 3.0`
+- score regimes: perfect score, finite score with `kappa = 1.0`, and finite score with `kappa = 3.0`
 - shift/weight setup: oracle Gaussian covariate shift in `D = 10`
 - WCS pruning: homogeneous
 
@@ -157,7 +157,7 @@ Outputs:
 - `figure5_operational_power_atlas.png`: `2 x 4` controlled power atlas varying `m`, anomaly count/rate, and `alpha`
 - `figure5_operational_power_atlas_summary.csv`: compact atlas cell summaries
 - `figure5_operational_power_atlas_tikz.csv`: PGFPlots/TikZ-friendly long table with heatmap cells, cell bounds, panel IDs, power, FDR, AUROC, and rank-diagnostic values
-- `figure5_operational_power_atlas_reference_tikz.csv`: PGFPlots/TikZ-friendly reference table for default-setting markers and contour levels
+- `figure5_operational_power_atlas_reference_tikz.csv`: PGFPlots/TikZ-friendly reference table for contour levels
 - `figure5_required_ess_design_map.png`: minimum effective calibration size needed for 80% power
 - `figure5_required_ess_summary.csv`: compact required-ESS summaries
 - `figure5_required_ess_tikz.csv`: PGFPlots/TikZ-friendly long table with required-ESS heatmap cells and out-of-range status labels
@@ -170,6 +170,41 @@ are the camera-ready plotting inputs: they use stable panel names, `x`/`y`
 coordinates, cell-bound columns (`x_left`, `x_right`, `y_bottom`, `y_top`),
 numeric plotting values, labels, and `style_key` fields so a LaTeX project can
 consume them directly with `pgfplots` table filters or equivalent tooling.
+
+## Figure 6: Standard Unweighted Power Atlas
+
+Run the standard conformal CAD warm-up atlas:
+
+```bash
+uv run python -m src.scripts.figure6_unweighted_power_atlas --workers 11 --calibration-repeats 25 --test-repeats 100
+```
+
+Default parameters mirror the Figure 5 power atlas for direct visual comparison:
+
+- `OUT_DIR`: `outputs/figure6`
+- `--workers`: `11` in this checkout; if omitted, the script uses `max(1, os.cpu_count() - 1)`
+- `--calibration-repeats`: `25` independent split-conformal calibration sets per atlas cell
+- `--test-repeats`: `100` independent test batches evaluated against each fixed calibration set
+- `--cell-trials`: optional legacy/debug shortcut that uses one calibration set and this many test batches
+- `--force`: omitted, so matching cached summaries are reused
+- no covariate shift, no importance weights, no WCS pruning
+- `N_EFF_BINS`: `log10 N_eff` edges from `1.3` to `4.1`, with `N_eff = N_cal` and a top cell centered at `N_cal = 10,000`
+- `M_VALUES`, `PI1_VALUES`, and `ALPHA_VALUES`: same as Figure 5
+- score regimes: perfect score, finite score with `K = 1`, and finite score with `K = 3`
+
+Each default cell averages `25 x 100 = 2,500` FDP and power realizations. The
+FDR-ratio supplement is a different view of this same summary, not a separate
+experiment.
+
+Outputs:
+
+- `figure6_unweighted_power_atlas.png`: `3 x 4` standard-CAD power atlas varying `m`, anomaly count/rate, and `alpha`
+- `figure6_unweighted_power_atlas_summary.csv`: compact atlas cell summaries
+- `figure6_unweighted_power_atlas_tikz.csv`: PGFPlots/TikZ-friendly long table matching the Figure 5 atlas schema
+- `figure6_unweighted_power_atlas_reference_tikz.csv`: PGFPlots/TikZ-friendly reference table for contour levels
+- `figure6_supp_fdr_ratio_atlas.png`: supplementary `3 x 4` atlas of empirical FDR divided by nominal `alpha`
+- `figure6_supp_fdr_ratio_atlas_tikz.csv`: PGFPlots/TikZ-friendly long table for the supplementary FDR-ratio atlas
+- `figure6_supp_fdr_ratio_atlas_reference_tikz.csv`: PGFPlots/TikZ-friendly reference table for FDR-ratio contour levels
 
 ## Empirical Covariate-Shift Benchmark
 

@@ -70,7 +70,6 @@ class Figure5OperationalEnvelopeTest(unittest.TestCase):
                 "REQUIRED_ALPHA_VALUES": [0.1],
                 "BASELINE_M": 10,
                 "BASELINE_N_ANOMALY": 2,
-                "BASELINE_MARK_N_EFF": 10.0,
                 "tqdm": lambda iterable, **kwargs: iterable,
             }
 
@@ -160,8 +159,11 @@ class Figure5OperationalEnvelopeTest(unittest.TestCase):
                 path_patches["POWER_ATLAS_REFERENCE_TIKZ_PATH"]
             )
             self.assertEqual(set(atlas_reference["export_version"]), {"tikz-v1"})
-            self.assertIn("default_setting_marker", set(atlas_reference["group"]))
-            self.assertIn("contour_reference", set(atlas_reference["group"]))
+            self.assertEqual(set(atlas_reference["group"]), {"contour_reference"})
+            self.assertEqual(
+                set(atlas_reference["style_key"]),
+                {"median_log10_rank_delta_zero"},
+            )
 
             required_tikz = pd.read_csv(path_patches["REQUIRED_ESS_TIKZ_PATH"])
             self.assertEqual(len(required_tikz), len(required))
