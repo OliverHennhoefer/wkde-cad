@@ -49,13 +49,14 @@ Score regimes:
 - `perfect`: every anomaly score is placed above the maximum calibration or
   inlier score in that realization by `DELTA_SCORE = 1.0`.
 - `finite_k1`: anomaly scores are iid `N(1, 1)`.
+- `finite_k2`: anomaly scores are iid `N(2, 1)`.
 - `finite_k3`: anomaly scores are iid `N(3, 1)`.
 
 ## Grid
 
 The atlas uses the same sweeps as the Figure 5 power atlas where possible.
 
-- Rows: `perfect`, `finite_k1`, `finite_k3`.
+- Rows: `perfect`, `finite_k1`, `finite_k2`, `finite_k3`.
 - Columns: batch-size sweep with fixed anomaly rate, batch-size sweep with fixed
   anomaly count, anomaly-rate sweep, and nominal-FDR sweep.
 - `N_EFF_BINS = np.linspace(1.3, 4.1, 15)`, with cell centers from about 40 to

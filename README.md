@@ -148,13 +148,13 @@ Default parameters:
 - `PI1_VALUES`: `0.005 0.01 0.02 0.05 0.10 0.20`
 - `ALPHA_VALUES`: `0.01 0.025 0.05 0.10 0.20`
 - `REQUIRED_ALPHA_VALUES`: `0.05 0.10`
-- score regimes: perfect score, finite score with `kappa = 1.0`, and finite score with `kappa = 3.0`
+- score regimes: perfect score, finite score with `kappa = 1.0`, finite score with `kappa = 2.0`, and finite score with `kappa = 3.0`
 - shift/weight setup: oracle Gaussian covariate shift in `D = 10`
 - WCS pruning: homogeneous
 
 Outputs:
 
-- `figure5_operational_power_atlas.png`: `2 x 4` controlled power atlas varying `m`, anomaly count/rate, and `alpha`
+- `figure5_operational_power_atlas.png`: `4 x 4` controlled power atlas varying `m`, anomaly count/rate, and `alpha`
 - `figure5_operational_power_atlas_summary.csv`: compact atlas cell summaries
 - `figure5_operational_power_atlas_tikz.csv`: PGFPlots/TikZ-friendly long table with heatmap cells, cell bounds, panel IDs, power, FDR, AUROC, and rank-diagnostic values
 - `figure5_operational_power_atlas_reference_tikz.csv`: PGFPlots/TikZ-friendly reference table for contour levels
@@ -190,7 +190,7 @@ Default parameters mirror the Figure 5 power atlas for direct visual comparison:
 - no covariate shift, no importance weights, no WCS pruning
 - `N_EFF_BINS`: `log10 N_eff` edges from `1.3` to `4.1`, with `N_eff = N_cal` and a top cell centered at `N_cal = 10,000`
 - `M_VALUES`, `PI1_VALUES`, and `ALPHA_VALUES`: same as Figure 5
-- score regimes: perfect score, finite score with `K = 1`, and finite score with `K = 3`
+- score regimes: perfect score, finite score with `K = 1`, finite score with `K = 2`, and finite score with `K = 3`
 
 Each default cell averages `25 x 100 = 2,500` FDP and power realizations. The
 FDR-ratio supplement is a different view of this same summary, not a separate
@@ -198,11 +198,11 @@ experiment.
 
 Outputs:
 
-- `figure6_unweighted_power_atlas.png`: `3 x 4` standard-CAD power atlas varying `m`, anomaly count/rate, and `alpha`
+- `figure6_unweighted_power_atlas.png`: `4 x 4` standard-CAD power atlas varying `m`, anomaly count/rate, and `alpha`
 - `figure6_unweighted_power_atlas_summary.csv`: compact atlas cell summaries
 - `figure6_unweighted_power_atlas_tikz.csv`: PGFPlots/TikZ-friendly long table matching the Figure 5 atlas schema
 - `figure6_unweighted_power_atlas_reference_tikz.csv`: PGFPlots/TikZ-friendly reference table for contour levels
-- `figure6_supp_fdr_ratio_atlas.png`: supplementary `3 x 4` atlas of empirical FDR divided by nominal `alpha`
+- `figure6_supp_fdr_ratio_atlas.png`: supplementary `4 x 4` atlas of empirical FDR divided by nominal `alpha`
 - `figure6_supp_fdr_ratio_atlas_tikz.csv`: PGFPlots/TikZ-friendly long table for the supplementary FDR-ratio atlas
 - `figure6_supp_fdr_ratio_atlas_reference_tikz.csv`: PGFPlots/TikZ-friendly reference table for FDR-ratio contour levels
 

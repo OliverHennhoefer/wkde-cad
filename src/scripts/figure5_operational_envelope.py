@@ -37,8 +37,8 @@ EMPIRICAL_RESULTS_DIR = (
     REPO_ROOT / "outputs" / "empirical_benchmark" / "results" / "logistic"
 )
 
-SUMMARY_VERSION = "operational-envelope-v2"
-REQUIRED_ESS_VERSION = "required-ess-v2"
+SUMMARY_VERSION = "operational-envelope-v3"
+REQUIRED_ESS_VERSION = "required-ess-v3"
 EMPIRICAL_PROJECTION_VERSION = "empirical-projection-v1"
 TIKZ_EXPORT_VERSION = "tikz-v1"
 BASE_SEED = 20260518
@@ -46,6 +46,7 @@ BASE_SEED = 20260518
 D = 10
 FINITE_KAPPAS = {
     "finite_k1": 1.0,
+    "finite_k2": 2.0,
     "finite_k3": 3.0,
 }
 DELTA_SCORE = 1.0
@@ -72,7 +73,7 @@ RANK_BOUNDARY_LINEWIDTH = 2.4
 DEFAULT_WORKERS = max(1, (os.cpu_count() or 2) - 1)
 DEFAULT_WCS_BATCH_SIZE = 512
 DEFAULT_CELL_TRIALS = 100
-SCORE_REGIMES = ("perfect", "finite_k1", "finite_k3")
+SCORE_REGIMES = ("perfect", "finite_k1", "finite_k2", "finite_k3")
 
 
 @dataclass(frozen=True)
@@ -967,7 +968,7 @@ def plot_power_atlas(summary: pd.DataFrame) -> None:
     fig, axes = plt.subplots(
         len(SCORE_REGIMES),
         len(specs),
-        figsize=(4.2 * len(specs), 12.6),
+        figsize=(4.2 * len(specs), 4.2 * len(SCORE_REGIMES)),
         constrained_layout=True,
         sharey=True,
     )
@@ -1053,7 +1054,7 @@ def plot_required_ess(summary: pd.DataFrame) -> None:
     fig, axes = plt.subplots(
         len(SCORE_REGIMES),
         len(REQUIRED_ALPHA_VALUES),
-        figsize=(6.0 * len(REQUIRED_ALPHA_VALUES), 11.4),
+        figsize=(6.0 * len(REQUIRED_ALPHA_VALUES), 3.8 * len(SCORE_REGIMES)),
         constrained_layout=True,
         sharex=True,
         sharey=True,
