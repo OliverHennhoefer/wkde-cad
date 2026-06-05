@@ -14,6 +14,22 @@ class Figure5OperationalEnvelopeTest(unittest.TestCase):
         self.assertEqual(figure5.OUT_DIR.name, "figure5")
         self.assertEqual(figure5.OUT_DIR.parent.name, "outputs")
 
+    def test_default_neff_bins_match_figure6_range(self):
+        self.assertEqual(len(figure5.N_EFF_BINS), 15)
+        self.assertAlmostEqual(float(figure5.N_EFF_BINS[0]), 1.3)
+        self.assertAlmostEqual(float(figure5.N_EFF_BINS[-1]), 4.1)
+
+    def test_top_neff_bin_has_uncapped_uniform_weight_candidate(self):
+        candidates = figure5.neff_config_candidates(4.0)
+
+        self.assertTrue(
+            any(
+                rho == 0.0
+                and figure5.N_EFF_BINS[-2] <= np.log10(n_cal) < figure5.N_EFF_BINS[-1]
+                for n_cal, rho in candidates
+            )
+        )
+
     def test_weighted_tail_p_values_match_self_atom_formula(self):
         sorted_calib_scores = np.array([0.0, 1.0, 2.0])
         sorted_calib_weights = np.array([1.0, 2.0, 3.0])

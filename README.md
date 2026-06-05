@@ -143,7 +143,7 @@ Default parameters:
 - `--wcs-batch-size`: `512`
 - `--cell-trials`: `100`
 - `--force`: omitted, so matching cached summaries are reused
-- `N_EFF_BINS`: `log10 N_eff` from `1.3` to `3.7`, `12` displayed bins
+- `N_EFF_BINS`: `log10 N_eff` edges from `1.3` to `4.1`, `14` displayed bins, with a top cell centered near `N_eff = 10,000`
 - `M_VALUES`: `50 100 200 500 1000 2000`
 - `PI1_VALUES`: `0.005 0.01 0.02 0.05 0.10 0.20`
 - `ALPHA_VALUES`: `0.01 0.025 0.05 0.10 0.20`

@@ -37,8 +37,8 @@ EMPIRICAL_RESULTS_DIR = (
     REPO_ROOT / "outputs" / "empirical_benchmark" / "results" / "logistic"
 )
 
-SUMMARY_VERSION = "operational-envelope-v3"
-REQUIRED_ESS_VERSION = "required-ess-v3"
+SUMMARY_VERSION = "operational-envelope-v4"
+REQUIRED_ESS_VERSION = "required-ess-v4"
 EMPIRICAL_PROJECTION_VERSION = "empirical-projection-v1"
 TIKZ_EXPORT_VERSION = "tikz-v1"
 BASE_SEED = 20260518
@@ -50,9 +50,9 @@ FINITE_KAPPAS = {
     "finite_k3": 3.0,
 }
 DELTA_SCORE = 1.0
-N_EFF_BINS = np.linspace(1.3, 3.7, 13)
+N_EFF_BINS = np.linspace(1.3, 4.1, 15)
 RHO_CANDIDATES = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
-N_CAL_MAX = 8000
+N_CAL_MAX = 16000
 MAX_ACCEPT_ATTEMPTS_PER_CELL = 5000
 
 M_VALUES = [50, 100, 200, 500, 1000, 2000]
