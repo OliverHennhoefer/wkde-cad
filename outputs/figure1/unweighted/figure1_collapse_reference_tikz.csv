@@ -1,5 +1,0 @@
-export_version,figure,panel,panel_title,plot_order,group,method,scenario,kappa,m,x,y,value,probability,count,style_key,label
-tikz-v3,figure1,D,First-threshold diagnostic,11,reference,,baseline,,,0.0,-0.03,,,,vertical_zero,$\log_{10}\delta$
-tikz-v3,figure1,D,First-threshold diagnostic,12,reference,,baseline,,,0.0,1.03,,,,vertical_zero,$\log_{10}\delta$
-tikz-v3,figure1,E,Rank-aware BH-scale diagnostic,21,reference,,baseline,,,0.0,-0.03,,,,vertical_zero,$\log_{10}\Delta_{\mathrm{BH}}$
-tikz-v3,figure1,E,Rank-aware BH-scale diagnostic,22,reference,,baseline,,,0.0,1.03,,,,vertical_zero,$\log_{10}\Delta_{\mathrm{BH}}$

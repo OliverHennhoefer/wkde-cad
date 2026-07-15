@@ -1,0 +1,17 @@
+export_version,figure,panel,panel_title,plot_order,group,object_type,score_regime,sweep,x,y,x_end,y_end,value,style_key,label
+tikz-v1,figure1,power_atlas_r1_c1,$N_{cal}$ by $m$; fixed $\pi_1=0.05$,101,contour_reference,contour_level,perfect,m_fixed_pi,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r2_c1,$N_{cal}$ by $m$; fixed $\pi_1=0.05$,201,contour_reference,contour_level,finite_k1,m_fixed_pi,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r3_c1,$N_{cal}$ by $m$; fixed $\pi_1=0.05$,301,contour_reference,contour_level,finite_k2,m_fixed_pi,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r4_c1,$N_{cal}$ by $m$; fixed $\pi_1=0.05$,401,contour_reference,contour_level,finite_k3,m_fixed_pi,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r1_c2,$N_{cal}$ by $m$; fixed 10 anomalies,102,contour_reference,contour_level,perfect,m_fixed_count,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r2_c2,$N_{cal}$ by $m$; fixed 10 anomalies,202,contour_reference,contour_level,finite_k1,m_fixed_count,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r3_c2,$N_{cal}$ by $m$; fixed 10 anomalies,302,contour_reference,contour_level,finite_k2,m_fixed_count,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r4_c2,$N_{cal}$ by $m$; fixed 10 anomalies,402,contour_reference,contour_level,finite_k3,m_fixed_count,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r1_c3,$N_{cal}$ by anomaly rate,103,contour_reference,contour_level,perfect,pi1_sweep,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r2_c3,$N_{cal}$ by anomaly rate,203,contour_reference,contour_level,finite_k1,pi1_sweep,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r3_c3,$N_{cal}$ by anomaly rate,303,contour_reference,contour_level,finite_k2,pi1_sweep,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r4_c3,$N_{cal}$ by anomaly rate,403,contour_reference,contour_level,finite_k3,pi1_sweep,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r1_c4,$N_{cal}$ by FDR level,104,contour_reference,contour_level,perfect,alpha_sweep,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r2_c4,$N_{cal}$ by FDR level,204,contour_reference,contour_level,finite_k1,alpha_sweep,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r3_c4,$N_{cal}$ by FDR level,304,contour_reference,contour_level,finite_k2,alpha_sweep,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary
+tikz-v1,figure1,power_atlas_r4_c4,$N_{cal}$ by FDR level,404,contour_reference,contour_level,finite_k3,alpha_sweep,,,,,0.0,median_log10_rank_delta_zero,rank-aware boundary

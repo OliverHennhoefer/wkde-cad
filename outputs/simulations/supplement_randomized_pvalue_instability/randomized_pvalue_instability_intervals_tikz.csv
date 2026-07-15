@@ -1,0 +1,61 @@
+export_version,figure,panel,panel_title,plot_order,group,method,world_id,rho,world_seed,rank,x,y,y_lower,value,probability,count,style_key,label
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,anomaly_interval,randomized_wedf,rho_0000_seed_000,0.0,0,1,1,0.001996007984031936,0.0,0.001996007984031936,,,rho_0,$\rho=0.0$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,anomaly_interval,randomized_wedf,rho_0000_seed_000,0.0,0,2,2,0.001996007984031936,0.0,0.001996007984031936,,,rho_0,$\rho=0.0$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,anomaly_interval,randomized_wedf,rho_0000_seed_000,0.0,0,3,3,0.001996007984031936,0.0,0.001996007984031936,,,rho_0,$\rho=0.0$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,anomaly_interval,randomized_wedf,rho_0000_seed_000,0.0,0,4,4,0.001996007984031936,0.0,0.001996007984031936,,,rho_0,$\rho=0.0$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,anomaly_interval,randomized_wedf,rho_0000_seed_000,0.0,0,5,5,0.001996007984031936,0.0,0.001996007984031936,,,rho_0,$\rho=0.0$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,anomaly_interval,randomized_wedf,rho_0000_seed_000,0.0,0,6,6,0.001996007984031936,0.0,0.001996007984031936,,,rho_0,$\rho=0.0$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,anomaly_interval,randomized_wedf,rho_0000_seed_000,0.0,0,7,7,0.001996007984031936,0.0,0.001996007984031936,,,rho_0,$\rho=0.0$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,anomaly_interval,randomized_wedf,rho_0000_seed_000,0.0,0,8,8,0.001996007984031936,0.0,0.001996007984031936,,,rho_0,$\rho=0.0$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,anomaly_interval,randomized_wedf,rho_0000_seed_000,0.0,0,9,9,0.001996007984031936,0.0,0.001996007984031936,,,rho_0,$\rho=0.0$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,anomaly_interval,randomized_wedf,rho_0000_seed_000,0.0,0,10,10,0.001996007984031936,0.0,0.001996007984031936,,,rho_0,$\rho=0.0$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,bh_threshold,bh,rho_0000_seed_000,0.0,0,1,1,0.0001,,0.0001,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,bh_threshold,bh,rho_0000_seed_000,0.0,0,2,2,0.0002,,0.0002,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,bh_threshold,bh,rho_0000_seed_000,0.0,0,3,3,0.00030000000000000003,,0.00030000000000000003,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,bh_threshold,bh,rho_0000_seed_000,0.0,0,4,4,0.0004,,0.0004,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,bh_threshold,bh,rho_0000_seed_000,0.0,0,5,5,0.0005,,0.0005,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,bh_threshold,bh,rho_0000_seed_000,0.0,0,6,6,0.0006000000000000001,,0.0006000000000000001,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,bh_threshold,bh,rho_0000_seed_000,0.0,0,7,7,0.0007000000000000001,,0.0007000000000000001,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,bh_threshold,bh,rho_0000_seed_000,0.0,0,8,8,0.0008,,0.0008,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,bh_threshold,bh,rho_0000_seed_000,0.0,0,9,9,0.0009,,0.0009,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,1,bh_threshold,bh,rho_0000_seed_000,0.0,0,10,10,0.001,,0.001,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,anomaly_interval,randomized_wedf,rho_1250_seed_016,1.25,16,1,1,0.0007780431118463316,0.0,0.0007780431118463316,,,rho_1250,$\rho=1.2$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,anomaly_interval,randomized_wedf,rho_1250_seed_016,1.25,16,2,2,0.0008419405346397699,0.0,0.0008419405346397699,,,rho_1250,$\rho=1.2$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,anomaly_interval,randomized_wedf,rho_1250_seed_016,1.25,16,3,3,0.0013194725492044423,0.0,0.0013194725492044423,,,rho_1250,$\rho=1.2$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,anomaly_interval,randomized_wedf,rho_1250_seed_016,1.25,16,4,4,0.002762790556974399,0.0,0.002762790556974399,,,rho_1250,$\rho=1.2$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,anomaly_interval,randomized_wedf,rho_1250_seed_016,1.25,16,5,5,0.0038723191038721127,0.0,0.0038723191038721127,,,rho_1250,$\rho=1.2$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,anomaly_interval,randomized_wedf,rho_1250_seed_016,1.25,16,6,6,0.004029971167402084,0.0,0.004029971167402084,,,rho_1250,$\rho=1.2$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,anomaly_interval,randomized_wedf,rho_1250_seed_016,1.25,16,7,7,0.008077871590005675,0.0,0.008077871590005675,,,rho_1250,$\rho=1.2$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,anomaly_interval,randomized_wedf,rho_1250_seed_016,1.25,16,8,8,0.009531110511240335,0.0,0.009531110511240335,,,rho_1250,$\rho=1.2$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,anomaly_interval,randomized_wedf,rho_1250_seed_016,1.25,16,9,9,0.009983058982359877,0.0,0.009983058982359877,,,rho_1250,$\rho=1.2$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,anomaly_interval,randomized_wedf,rho_1250_seed_016,1.25,16,10,10,0.02244415059157079,0.0,0.02244415059157079,,,rho_1250,$\rho=1.2$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,bh_threshold,bh,rho_1250_seed_016,1.25,16,1,1,0.0001,,0.0001,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,bh_threshold,bh,rho_1250_seed_016,1.25,16,2,2,0.0002,,0.0002,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,bh_threshold,bh,rho_1250_seed_016,1.25,16,3,3,0.00030000000000000003,,0.00030000000000000003,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,bh_threshold,bh,rho_1250_seed_016,1.25,16,4,4,0.0004,,0.0004,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,bh_threshold,bh,rho_1250_seed_016,1.25,16,5,5,0.0005,,0.0005,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,bh_threshold,bh,rho_1250_seed_016,1.25,16,6,6,0.0006000000000000001,,0.0006000000000000001,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,bh_threshold,bh,rho_1250_seed_016,1.25,16,7,7,0.0007000000000000001,,0.0007000000000000001,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,bh_threshold,bh,rho_1250_seed_016,1.25,16,8,8,0.0008,,0.0008,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,bh_threshold,bh,rho_1250_seed_016,1.25,16,9,9,0.0009,,0.0009,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,2,bh_threshold,bh,rho_1250_seed_016,1.25,16,10,10,0.001,,0.001,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,anomaly_interval,randomized_wedf,rho_2500_seed_003,2.5,3,1,1,0.0014517536821452006,0.0,0.0014517536821452006,,,rho_2500,$\rho=2.5$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,anomaly_interval,randomized_wedf,rho_2500_seed_003,2.5,3,2,2,0.0023684947348494834,0.0,0.0023684947348494834,,,rho_2500,$\rho=2.5$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,anomaly_interval,randomized_wedf,rho_2500_seed_003,2.5,3,3,3,0.0037194708309571858,0.0,0.0037194708309571858,,,rho_2500,$\rho=2.5$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,anomaly_interval,randomized_wedf,rho_2500_seed_003,2.5,3,4,4,0.005116718831408008,0.0,0.005116718831408008,,,rho_2500,$\rho=2.5$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,anomaly_interval,randomized_wedf,rho_2500_seed_003,2.5,3,5,5,0.017532881538943505,0.0,0.017532881538943505,,,rho_2500,$\rho=2.5$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,anomaly_interval,randomized_wedf,rho_2500_seed_003,2.5,3,6,6,0.03476466601027422,0.0,0.03476466601027422,,,rho_2500,$\rho=2.5$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,anomaly_interval,randomized_wedf,rho_2500_seed_003,2.5,3,7,7,0.04233345219352265,0.0,0.04233345219352265,,,rho_2500,$\rho=2.5$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,anomaly_interval,randomized_wedf,rho_2500_seed_003,2.5,3,8,8,0.09844694762433748,0.0,0.09844694762433748,,,rho_2500,$\rho=2.5$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,anomaly_interval,randomized_wedf,rho_2500_seed_003,2.5,3,9,9,0.3812162843189883,0.0,0.3812162843189883,,,rho_2500,$\rho=2.5$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,anomaly_interval,randomized_wedf,rho_2500_seed_003,2.5,3,10,10,0.5395828184817197,0.0,0.5395828184817197,,,rho_2500,$\rho=2.5$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,bh_threshold,bh,rho_2500_seed_003,2.5,3,1,1,0.0001,,0.0001,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,bh_threshold,bh,rho_2500_seed_003,2.5,3,2,2,0.0002,,0.0002,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,bh_threshold,bh,rho_2500_seed_003,2.5,3,3,3,0.00030000000000000003,,0.00030000000000000003,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,bh_threshold,bh,rho_2500_seed_003,2.5,3,4,4,0.0004,,0.0004,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,bh_threshold,bh,rho_2500_seed_003,2.5,3,5,5,0.0005,,0.0005,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,bh_threshold,bh,rho_2500_seed_003,2.5,3,6,6,0.0006000000000000001,,0.0006000000000000001,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,bh_threshold,bh,rho_2500_seed_003,2.5,3,7,7,0.0007000000000000001,,0.0007000000000000001,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,bh_threshold,bh,rho_2500_seed_003,2.5,3,8,8,0.0008,,0.0008,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,bh_threshold,bh,rho_2500_seed_003,2.5,3,9,9,0.0009,,0.0009,,,bh_threshold,$\alpha r / m$
+tikz-frontier-v1,randomized_pvalue_instability,A,Fixed-world randomized intervals,3,bh_threshold,bh,rho_2500_seed_003,2.5,3,10,10,0.001,,0.001,,,bh_threshold,$\alpha r / m$

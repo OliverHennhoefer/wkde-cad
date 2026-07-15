@@ -1,0 +1,1 @@
+"""Simulation figure generators."""
